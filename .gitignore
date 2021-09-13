@@ -4,3 +4,8 @@ code/.pytest_cache
 code/.ipynb_checkpoints
 code/.vscode/*
 .vscode/*
+
+classnk/*
+info/*
+old/*
+guidelines/*
