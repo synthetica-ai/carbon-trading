@@ -1,0 +1,11 @@
+vessel_name,vessel_type,dwt,cii_required,cii_attained,current_port,current_speed
+handy_1,handymax,40000,0,0,somewhere,0
+handy_2,handymax,40000,0,0,somewhere,0
+supra_1,supramax,50000,0,0,somewhere,0
+supra_2,supramax,50000,0,0,somewhere,0
+ultra_1,ultramax,60000,0,0,somewhere,0
+ultra_2,ultramax,60000,0,0,somewhere,0
+pana_1,panamax,70000,0,0,somewhere,0
+pana_2,panamax,70000,0,0,somewhere,0
+kamsar_1,kamsarmax,80000,0,0,somewhere,0
+kamsar_2,kamsarmax,80000,0,0,somewhere,0

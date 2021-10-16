@@ -1,0 +1,51 @@
+#,Port,Country,Region,Code,Position,Latitude,Longitude,Location
+1,Shanghai,China,East Asia,CNSHA,"31° 15.500' N, 121° 32.600' E",31.258333,121.543333,Yangtze Delta
+2,Singapore,Singapore,Southeast Asia,SGSIN,"1° 15.500' N, 103° 47.900' E",1.25833,103.798333,Singapore Strait
+3,Ningbo-Zhoushan,China,East Asia,CNNGB,"29° 54.000' N, 121° 33.000' E",29.90000,121.55,Yangtze Delta
+4,Shenzhen,China,East Asia,CNSZX,"22° 26.606' N, 113° 53.016' E",22.44343,113.8836,Pearl River Delta
+5,Guangzhou,China,East Asia,CNCAN,"23° 3.900' N, 113° 25.150' E",23.06500,113.419167,Pearl River Delta
+6,Qingdao,China,East Asia,CNTAO,"36° 5.650' N, 120° 19.000' E",36.09417,120.316667,Yellow Sea
+7,Busan,South Korea,East Asia,KRPUS,"35° 6.500' N, 129° 3.500' E",35.10833,129.058333,Korean Strait
+8,Hong Kong,Hong Kong,East Asia,HKHKG,"22° 17.400' N, 114° 10.100' E",22.29000,114.168333,Pearl River Delta
+9,Tianjin,China,East Asia,CNTXG,"38° 58.400' N, 117° 46.300' E",38.97333,117.771667,Yellow Sea
+10,Rotterdam,Netherlands,Europe,NLRTM,"51° 54.100' N, 4° 26.100' E",51.90167,4.435,Rhine delta
+11,Jebel Ali/Dubai,United Arab Emirates,West Asia,AEJEA,"24° 59.500' N, 55° 3.300' E",,,Persian Gulf
+12,Port Klang,Malaysia,Southeast Asia,MYPKG,"3° 2.000' N, 101° 21.200' E",,,Malacca Strait
+13,Antwerp,Belgium,Europe,BEANR,"51° 20.800' N, 4° 16.200' E",,,Scheldt delta
+14,Xiamen,China,East Asia,CNXMN,"24° 27.100' N, 118° 4.300' E",,,Taiwan Strait
+15,Tanjung Pelepas,Malaysia,Southeast Asia,MYTPP,"1° 21.500' N, 103° 32.600' E",,,Malacca Strait
+16,Kaohsiung,Taiwan,East Asia,TWKHH,"22° 34.800' N, 120° 18.000' E",,,Taiwan Strait
+17,Los Angeles,United States,North America,USLAX,"33° 45.000' N, 118° 13.500' W",,,West Coast
+18,Hamburg,Germany,Europe,DEHAM,"53° 32.500' N, 9° 55.900' E",,,Elbe River
+19,Long Beach,United States,North America,USLGB,"33° 44.500' N, 118° 12.000' W",,,West Coast
+20,New York / New Jersey,United States,North America,USNYC,"40° 41.900' N, 74° 0.400' W",,,East Coast
+21,Laem Chabang,Thailand,Southeast Asia,THLCH	,"13° 3.750' N, 100° 52.800' E",,,Gulf of Thailand
+22,Saigon,Vietnam,Southeast Asia,VNSGN,"10° 45.951' N, 106° 42.584' E",,,East Vietnam Sea
+23,Colombo,Sri Lanka,South Asia,LKCMB	,"6° 57.000' N, 79° 51.000' E",,,Sri Lanka
+24,Dalian,China,East Asia,CNDLC,"38° 56.300' N, 121° 39.500' E",,,Yellow Sea
+25,Tanjung Priok,Indonesia,Southeast Asia,IDTPP,"6° 5.750' S, 106° 53.500' E",,,Java Sea
+26,Tanger-Med,Morocco,North Africa,MAPTM        ,"35° 53.600' N, 5° 29.800' W",,,Western Mediterranean
+35,Piraeus,Greece,Europe,GRPIR,"37° 56.400' N, 23° 37.600' E",,,Eastern Mediterranean
+27,Yingkou,China,East Asia,CNYIK	,"40° 41.000' N, 122° 15.000' E",,,Liaodong Bay
+28,Valencia,Spain,Europe,ESVLC	,"39° 26.300' N, 0° 18.700' W",,,Western Mediterranean
+29,Manila,Philippines,Southeast Asia,PHMNN,"14° 38.100' N, 120° 56.600' E",,,Manila Bay
+30,Taicang,China,East Asia,CNTAC,"31° 35.200' N, 121° 17.200' E",,,Yangtze Delta
+31,Hai Phong,Vietnam,Southeast Asia,VNHPH,"20° 52.260' N, 106° 41.610' E",,,Hong River Delta
+32,Algeciras,Spain,Europe,ESALG,"36° 8.000' N, 5° 26.000' W",,,Western Mediterranean
+33,Nhava Sheva / Mumbai,India,South Asia,INNSA,"18° 57.300' N, 72° 56.650' E",,,Arabian Sea
+34,Bremerhaven,Germany,Europe,DEBRV,"53° 33.800' N, 8° 32.800' E",,,North Sea
+36,Lianyungang,China,East Asia,CNLYG,"34° 45.000' N, 119° 27.000' E",,,Yellow Sea
+37,Mundra,India,South Asia,INMUN,"22° 43.600' N, 69° 42.400' E",,,Gulf of Kutch
+38,Savannah,United States,North America,USSAV,"32° 4.900' N, 81° 5.300' W",,,East Coast
+39,Tokyo,Japan,East Asia,JPTYO,"35° 36.200' N, 139° 46.500' E",,,Tokyo Bay
+40,Jeddah,Saudi Arabia,West Asia,SAJED	,"21° 27.850' N, 39° 9.300' E",,,Red Sea
+41,Colón,Panama,Central America,PAONX,"9° 23.300' N, 79° 55.150' W",,,Caribbean coast
+42,Santos,Brazil,South America,BRSSZ,"23° 57.900' S, 46° 17.900' W",,,South Atlantic Ocean
+43,Salalah,Oman,West Asia,OMRAY,"16° 56.600' N, 54° 0.400' E",,,Arabian Sea
+44,Tanjung Perak,Indonesia,Southeast Asia,IDSUB,"7° 11.539' S, 112° 44.055' E",,,Madura Strait
+45,Port Said,Egypt,North Africa,EGPSD,"31° 15.850' N, 32° 19.000' E",,,Eastern Mediterranean
+46,Seattle–Tacoma,United States,North America,USSEA,"47° 35.500' N, 122° 21.500' W",,,West Coast
+47,Cai Mep,Vietnam,Southeast Asia,VNTOT,"10° 30.800' N, 107° 0.500' E",,,East Vietnam Sea
+48,Dongguan,China,East Asia,CNDGG,"22° 53.800' N, 113° 35.000' E",,,Pearl River Delta
+49,Felixstowe,United Kingdom,Europe,GBFXT,"51° 57.400' N, 1° 18.000' E",,,North Sea
+50,Fuzhou,China,East Asia,CNFOC,"25° 58.900' N, 119° 26.700' E",,,Taiwan Strait
