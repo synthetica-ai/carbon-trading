@@ -17,7 +17,7 @@ def create_contracts(seed):
     return c
 
 
-def cii_required(dwt, year=2023):
+def cii_expected(dwt, year=2023):
     """
     a function calculating the annual required cii of a vessel given a year
     """
