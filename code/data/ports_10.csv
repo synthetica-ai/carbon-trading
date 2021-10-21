@@ -1,4 +1,4 @@
-#,Port,Country,Region,Code,Position,Latitude,Longitude,Location
+number,name,country,region,code,position,latitude,longitude,location
 1,Shanghai,China,East Asia,CNSHA,"31° 15.500' N, 121° 32.600' E",31.258333,121.543333,Yangtze Delta
 2,Singapore,Singapore,Southeast Asia,SGSIN,"1° 15.500' N, 103° 47.900' E",1.25833,103.798333,Singapore Strait
 3,Xiamen,China,East Asia,CNXMN,"24° 27.100' N, 118° 4.300' E",24.45167,118.071667,Taiwan Strait

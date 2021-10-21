@@ -1,4 +1,4 @@
-def create_contracts(seed=42):
+def create_contracts(seed):
     """
     A function that creates 4 random cargo contracts at each env step.\
     There are 5 cargo contract types handy,supra,ultra,pana,kamsar for each port.\
@@ -8,17 +8,16 @@ def create_contracts(seed=42):
     * the sum of the array must be 4
     """
     import numpy as np
-
     number_of_contracts = 4
     np.random.seed(seed)
-    x = np.random.multinomial(number_of_contracts, [1 / 5] * 5, None)
-    z = np.zeros(shape=45, dtype=int)
+    x = np.random.multinomial(number_of_contracts, [1/5]*5, None)
+    z = np.zeros(shape=45, dtype=np.int32)
     c = np.concatenate((x, z))
     np.random.shuffle(c)
     return c
 
 
-def cii_required(dwt=40_000, year=2023):
+def cii_required(dwt, year=2023):
     """
     a function calculating the annual required cii of a vessel given a year
     """
@@ -26,7 +25,7 @@ def cii_required(dwt=40_000, year=2023):
     c = 0.622
     z = {2023: 5, 2024: 7, 2025: 9, 2026: 8}
     cii_ref = a * dwt ** (-c)
-    cii_required = ((100 - z[year]) / 100) * cii_ref
+    cii_required = ((100 - z[year])/100) * cii_ref
     return cii_required
 
 
