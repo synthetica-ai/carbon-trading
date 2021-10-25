@@ -1,4 +1,4 @@
-vessel_name,vessel_type,dwt,cii_required,cii_attained,current_port,current_speed,is_available
+ship_name,ship_type,dwt,cii_threshold,cii_attained,current_port,current_speed,is_available
 handy_1,handymax,40000,0,0,0,0,1
 handy_2,handymax,40000,0,0,0,0,1
 supra_1,supramax,50000,0,0,0,0,1
