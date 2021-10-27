@@ -87,3 +87,15 @@ def can_serve(vessels_df, contract_df, ports_df):
     #         can_reach()
 
     pass
+
+
+def find_distance():
+ # get distance between start and end ports arrays
+    start_ports_index = df['start_port'] - 1
+    print(start_ports_index)
+    end_ports_index = df['end_port']
+    print(end_ports_index)
+    dist_df = dm.iloc[start_ports_index, end_ports_index]
+    # the distance
+    df['distance'] = pd.Series(np.diag(dist_df)).reindex()
+    pass
