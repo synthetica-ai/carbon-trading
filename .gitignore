@@ -10,3 +10,5 @@ classnk/*
 info/*
 old/*
 guidelines/*
+
+*/__pycache__
