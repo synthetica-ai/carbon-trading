@@ -3,7 +3,7 @@ from termcolor import colored
 
 
 # from env.enviroments import SimosFoodGroup
-from data.data_functions import  train_input_fn
+from data.data_functions import  train_input_fn, eval_input_fn
 from utils.util_functions import create_meta_parameters
 from models.models import model_skeleton
 from training.training_functions import train
@@ -17,5 +17,5 @@ metaparameters = create_meta_parameters()
 validation_dataset = eval_input_fn(metaparameters)
 
 # Train operation
-model = train(validation_dataset, metaparameters,config)
+# model = train(validation_dataset, metaparameters,config)
 
