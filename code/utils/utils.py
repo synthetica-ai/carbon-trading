@@ -20,8 +20,8 @@ def create_contracts(dm=distance_matrix, ports=ports_df, day=1, seed=None):
     start_port_numbers_index = con_df['start_port_number'] - 1
     end_port_numbers_index = con_df['end_port_number']
 
-    dist_df = distance_matrix.iloc[start_port_numbers_index,
-                                   end_port_numbers_index]
+    dist_df = dm.iloc[start_port_numbers_index,
+                      end_port_numbers_index]
     # the distance
     con_df['port_distance'] = pd.Series(np.diag(dist_df)).reindex()
 
@@ -61,7 +61,7 @@ def create_contracts(dm=distance_matrix, ports=ports_df, day=1, seed=None):
     dt_days = (dt_hours / 24).round()
 
     # get upper triangle entries of distance matrix
-    x = distance_matrix.iloc[:, 1:].to_numpy(dtype=np.int32)
+    x = dm.iloc[:, 1:].to_numpy(dtype=np.int32)
     mask_upper = np.triu_indices_from(x, k=1)
     triu = x[mask_upper]
     # average voyage distance between ports in the distance matrix
