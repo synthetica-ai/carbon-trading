@@ -1,4 +1,4 @@
-def create_contracts(dm=distance_matrix, ports=ports_df, day=1, seed=None):
+def create_contracts(dm, ports, day=1, seed=None):
     """
     A function for creating cargo contracts for a specific day of the year
     """
@@ -156,13 +156,130 @@ def can_serve(vessels_df, contract_df, ports_df):
     pass
 
 
-def find_distance():
- # get distance between start and end ports arrays
-    start_ports_index = df['start_port'] - 1
-    print(start_ports_index)
-    end_ports_index = df['end_port']
-    print(end_ports_index)
-    dist_df = dm.iloc[start_ports_index, end_ports_index]
-    # the distance
-    df['distance'] = pd.Series(np.diag(dist_df)).reindex()
-    pass
+def find_distance(port_number_1, port_number_2, dist_m):
+    """
+    find port distances from port numbers
+    port numbers are port are port indices + 1
+    port numbers must be in [1-10] range
+    """
+    dist_m = dist_m.iloc[:, 1:]
+    idx_1 = port_number_1-1
+    idx_2 = port_number_2-1
+    distance = dist_m.iloc[idx_1, idx_2]
+    return distance
+
+
+# # create random contracts old
+# def create_contrs(self=None, df=contracts_df, dm = distance_matrix , step=1, seed=None):
+#         """
+#         A method that creates 4 random cargo contracts at each env step. \
+#         There are 5 cargo contract types handy,supra,ultra,pana,kamsar for each port.\
+#         The function :
+#         * returns a 1d array of 4 elements
+#         * all array elements are integers from 0 to 4
+#         * the sum of the array must be 4
+#         """
+#         day = step
+#         # creating 4 contracts for the specific day
+#         contr_count = 4
+#         np.random.seed(seed)
+#         # x array of 5 elements that sum to one
+#         x = np.random.multinomial(contr_count, [1/5]*5, None)
+#         # y array of 45 zeros
+#         z = np.zeros(shape=45, dtype=np.int32)
+#         # contracts of size 50 concatenation of x,y
+#         contracts = np.concatenate((x,z))
+#         np.random.shuffle(contracts)
+
+#         # getting port locations where contracts have spawned
+#         locations = np.nonzero(contracts)[0]
+#         # getting the start ports of the contract
+#         ports = np.floor_divide(locations,5)
+#         # ports start at port 1
+#         ports = ports + 1
+#         # getting the contract count for a specific location
+#         contract_count_per_loc = contracts[locations]
+#         # array of fives to help with modulo
+#         fives = np.ones((len(locations)))*5
+#         # find ship type at port with modulo
+#         x = np.mod(locations,fives)
+#         # creating the ship_conditions for each shiptype
+#         ship_conditions = [ x == 0 , x == 1, x == 2, x == 3, x == 4 ]
+#         ship_choices = ['handymax','supramax','ultramax','panamax','kamsarmax']
+#         # getting the shiptype and converting it to str
+#         ship_types = np.select(ship_conditions,ship_choices)
+#         ship_types = ship_types.astype(str)
+#         # populating the df
+#         df['contract_type'] = np.repeat(ship_types,contract_count_per_loc)
+#         df['start_port_number'] = np.repeat(ports,contract_count_per_loc)
+#         df['end_port_number'] = np.random.randint(low=1, high=11, size=(4,))
+#         # Check for contracts with same start and end ports
+#         same_ports = df['start_port_number'] == df['end_port_number']
+#         # repeat until no start and end ports of the same contract are the same
+#         while sum(same_ports) != 0 :
+#           df['end_port_number'] = np.where(same_ports, np.random.randint(low=1, high=11, size=same_ports.shape), df['end_port_number'])
+#           same_ports = df['start_port_number'] == df['end_port_number']
+
+#         # get distance between start and end ports arrays
+#         start_port_numbers_index = df['start_port_number'] - 1
+
+#         end_port_numbers_index = df['end_port_number']
+
+#         dist_df = dm.iloc[start_port_numbers_index,end_port_numbers_index]
+#         # the distance
+#         df['port_distance'] = pd.Series(np.diag(dist_df)).reindex()
+
+
+#         # Create cargo size based on ship_type
+#         type_conditions = [ df['contract_type'] == 'handymax',
+#                             df['contract_type'] == 'supramax',
+#                             df['contract_type'] == 'ultramax',
+#                             df['contract_type'] == 'panamax',
+#                             df['contract_type'] == 'kamsarmax']
+
+#         cargo_size_choices = [np.random.randint(30_000,40_000,type_conditions[0].shape),
+#                               np.random.randint(40_000,50_000,type_conditions[1].shape),
+#                               np.random.randint(50_000,60_000,type_conditions[2].shape),
+#                               np.random.randint(60_000,70_000,type_conditions[3].shape),
+#                               np.random.randint(70_000,80_000,type_conditions[4].shape)]
+
+#         df['cargo_size'] = np.select(type_conditions,cargo_size_choices)
+
+#         # add contract value
+#         df['value'] = np.round(df['cargo_size'] * 1.5)
+
+#         # add start day
+#         df['start_day'] = day
+
+
+#         # calculate duration
+
+#         # pick random speed from possible set of speeds
+#         u_picked = np.random.choice([10,12,14])
+
+#         # pick distance between ports from df
+#         dx = df['port_distance']
+#         # find duration of trip between ports with picked speed in hours
+#         dt_hours = ( dx / u_picked).round()
+#         # find duration of trip between ports in days
+#         dt_days = (dt_hours / 24).round()
+
+#         # get upper triangle entries of distance matrix
+#         x = dm.iloc[:,1:].to_numpy(dtype=np.int32)
+#         mask_upper = np.triu_indices_from(x,k=1)
+#         triu = x[mask_upper]
+#         # average voyage distance between ports in the distance matrix
+#         avg_dx = np.round(triu.mean())
+#         # average voyage duration between ports with picked speed in hours
+#         avg_dt_hours = np.round(avg_dx/u_picked)
+#         # # average voyage duration between ports with picked speed in days
+#         avg_dt_days = np.round(avg_dt_hours / 24)
+
+#         # total duration
+#         df['contract_duration'] = dt_days + avg_dt_days
+
+
+#         # end_day ends at 23:59
+#         df['end_day'] = df['start_day'] + df['contract_duration'] - 1
+
+#         return df
