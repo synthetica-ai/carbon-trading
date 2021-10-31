@@ -34,8 +34,8 @@ class CarbonEnv(gym.Env):
 
         # the observation space changes daily based on the step==1 day
         observation_space = spaces.Dict({
-            "contracts": spaces.Discrete(NUM_DAILY_CONTRACTS,),
-            "ships": spaces.Discrete(NUM_SHIPS,)
+            "contracts": spaces.Discrete(NUM_DAILY_CONTRACTS),
+            "ships": spaces.Discrete(NUM_SHIPS)
         })
 
         # action_space = spaces.Dict({
