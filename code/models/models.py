@@ -1,8 +1,10 @@
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras.layers import Dense
+from tensorflow.keras import layers 
 from tensorflow.keras import Input, Model
+import tensorflow_probability as tfp
 import numpy as np
+
 
 import numpy as np
 from scipy.stats import ttest_rel

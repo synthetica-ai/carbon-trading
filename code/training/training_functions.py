@@ -4,7 +4,7 @@ import numpy as np
 from termcolor import colored
 from tqdm import tqdm
 from datetime import datetime
-from os import rmdir, listdir, remove
+from os import rmdir, listdir, remove, makedirs
 from os.path import exists
 from time import gmtime, strftime
 from itertools import product
@@ -13,97 +13,121 @@ from shutil import copyfile
 
 from data.data_functions import train_input_fn
 from env.env import CarbonEnv
-from models.models import set_decode_type,validate, model_skeleton
+from models.models import set_decode_type,validate, model_skeleton, BaselineNet, PolicyNet
 
 
 
-# # compute grads of a single action-step
-# def play_one_step(env, obs, model, loss_fn):
-#     with tf.GradientTape() as tape:
-#         left_proba = model(obs[np.newaxis])  # model proba of going left
-#         # exploration - exploitation
-#         action = (
-#             tf.random.uniform([1, 1]) > left_proba
-#         )  # action left (0) with prob left_proba or right (1) with prob 1-left_proba
-#         y_target = tf.constant([[1.0]]) - tf.cast(
-#             action, tf.float32
-#         )  # target prob of going left
-#         loss = tf.reduce_mean(loss_fn(y_target, left_proba))
-#     grads = tape.gradient(loss, model.trainable_variables)
-#     obs, reward, done, info = env.step(int(action[0, 0].numpy()))
-#     return obs, reward, done, grads
+class PolicyGradient(object):
+    def __init__(self, env, num_iterations=2, batch_size=2000, max_ep_len=200, output_path="../results/"):
+        self.output_path = output_path
+        if not exists(output_path):
+            makedirs(output_path)
+        self.env = env
+        self.observation_dim = self.env.observation_space.shape[0]
+        self.action_dim = self.env.action_space.n
+        self.gamma = 0.99
+        self.num_iterations = num_iterations
+        self.batch_size = batch_size
+        self.max_ep_len = max_ep_len
+        self.optimizer = tf.keras.optimizers.Adam(learning_rate=3e-2)
+        self.policy_net = PolicyNet(input_size=self.observation_dim, output_size=self.action_dim)
+        self.baseline_net = BaselineNet(input_size=self.observation_dim, output_size=1)
 
+    def play_games(self, env=None, num_episodes = None):
+        episode = 0
+        episode_rewards = []
+        paths = []
+        t = 0
+        if not env:
+            env = self.env
 
-# # play multiple episodes/games, returning all the rewards and gradients for each episode
-# def play_multiple_episodes(env, n_episodes, n_max_steps, model, loss_fn):
-#     all_rewards = []
-#     all_grads = []
-#     for episode in range(n_episodes):
-#         current_rewards = []
-#         current_grads = []
-#         obs = env.reset()
-#         for step in range(n_max_steps):
-#             obs, reward, done, grads = play_one_step(env, obs, model, loss_fn)
-#             current_rewards.append(reward)
-#             current_grads.append(grads)
-#             if done:
-#                 break
-#         all_rewards.append(current_rewards)
-#         all_grads.append(current_grads)
-#     return all_rewards, all_grads
+        while (num_episodes or t < self.batch_size):
+            state = env.reset()
+            states, actions, rewards = [], [], []
+            episode_reward = 0
 
+            for step in range(self.max_ep_len):
+                states.append(state)
+                action = self.policy_net.sample_action(np.atleast_2d(state))[0]
+                state, reward, done, _ = env.step(action)
+                actions.append(action)
+                rewards.append(reward)
+                episode_reward += reward
+                t += 1
 
-# def discount_rewards(rewards, gamma):
-#     discounted = np.array(rewards)
-#     for step in range(len(rewards) - 2, -1, -1):
-#         discounted[step] += discounted[step + 1] * gamma
-#     return discounted
+                if (done or step == self.max_ep_len-1):
+                    episode_rewards.append(episode_reward)
+                    break
+                if (not num_episodes) and t == self.batch_size:
+                    break
 
+            path = {"observation": np.array(states),
+                    "reward": np.array(rewards),
+                    "action": np.array(actions)}
+            paths.append(path)
+            episode += 1
+            if num_episodes and episode >= num_episodes:
+                break
+        return paths, episode_rewards
 
-# def discount_and_normalize_rewards(all_rewards, gamma):
-#     all_discounted_rewards = [
-#         discount_rewards(rewards, gamma) for rewards in all_rewards
-#     ]
-#     flat_rewards = np.concatenate(all_discounted_rewards)
-#     reward_mean = flat_rewards.mean()
-#     reward_std = flat_rewards.std()
-#     return [
-#         (discounted_rewards - reward_mean) / reward_std
-#         for discounted_rewards in all_discounted_rewards
-#     ]
+    def get_returns(self, paths):
+        all_returns = []
+        for path in paths:
+            rewards = path["reward"]
+            returns = []
+            reversed_rewards = np.flip(rewards,0)
+            g_t = 0
+            for r in reversed_rewards:
+                g_t = r + self.gamma*g_t
+                returns.insert(0, g_t)
+            all_returns.append(returns)
+        returns = np.concatenate(all_returns)
+        return returns
 
+    def get_advantage(self, returns, observations):
+        values = self.baseline_net.forward(observations).numpy()
+        advantages = returns - values
+        advantages = (advantages-np.mean(advantages)) / np.sqrt(np.sum(advantages**2))
+        return advantages
 
-# # hyperparams
+    def update_policy(self, observations, actions, advantages):
+        observations = tf.convert_to_tensor(observations)
+        actions = tf.convert_to_tensor(actions)
+        advantages = tf.convert_to_tensor(advantages)
+        with tf.GradientTape() as tape:
+            log_prob = self.policy_net.action_distribution(observations).log_prob(actions)
+            loss = -tf.math.reduce_mean(log_prob * tf.cast(advantages, tf.float32))
+        grads = tape.gradient(loss, self.policy_net.model.trainable_weights)
+        self.optimizer.apply_gradients(zip(grads, self.policy_net.model.trainable_weights))
 
-# n_iterations = 150
-# n_episodes_per_update = 10
-# n_max_steps = 200
-# gamma = 0.95
+    def train(self):
+        all_total_rewards = []
+        averaged_total_rewards = []
+        for t in range(self.num_iterations):
+            paths, total_rewards = self.play_games()
+            all_total_rewards.extend(total_rewards)
+            observations = np.concatenate([path["observation"] for path in paths])
+            actions = np.concatenate([path["action"] for path in paths])
+            returns = self.get_returns(paths)
+            advantages = self.get_advantage(returns, observations)
+            self.baseline_net.update(observations=observations, target=returns)
+            self.update_policy(observations, actions, advantages)
+            avg_reward = np.mean(total_rewards)
+            averaged_total_rewards.append(avg_reward)
+            print("Average reward for batch {}: {:04.2f}".format(t,avg_reward))
+        print("Training complete")
+        np.save(self.output_path+ "rewards.npy", averaged_total_rewards)
+        # export_plot(averaged_total_rewards, "Reward", "CartPole-v0", self.output_path + "rewards.png")
 
-# optimizer = keras.optimizers.Adam(lr=0.01)
-# loss_fn = keras.losses.binary_crossentropy
+    def eval(self, env, num_episodes=1):
+        paths, rewards = self.play_games(env, num_episodes)
+        avg_reward = np.mean(rewards)
+        print("Average eval reward: {:04.2f}".format(avg_reward))
+        return avg_reward
 
-
-# for iteration in range(n_iterations):
-#     all_rewards, all_grads = play_multiple_episodes(
-#         env, n_episodes_per_update, n_max_steps, model, loss_fn
-#     )
-
-#     # how good or bad an action was
-#     all_final_rewards = discount_and_normalize_rewards(all_rewards, gamma)
-#     all_mean_grads = []
-#     for var_index in range(len(model.trainable_variables)):
-#         mean_grads = tf.reduce_mean(
-#             [
-#                 final_reward * all_grads[episode_index][step][var_index]
-#                 for episode_index, final_rewards in enumerate(all_final_rewards)
-#                 for step, final_reward in enumerate(final_rewards)
-#             ],
-#             axis=0,
-#         )
-#         all_mean_grads.append(mean_grads)
-#     optimizer.apply_gradients(zip(all_mean_grads, model.trainable_variables))
-
+    def make_video(self):
+        env = wrappers.Monitor(self.env, self.output_path+"videos", force=True)
+        self.eval(env=env, num_episodes=1)
 
 
 
