@@ -4,21 +4,65 @@ from tensorflow.keras.layers import Dense
 from tensorflow.keras import Input, Model
 import numpy as np
 
-
-input_1 = Input(shape=())
-
 import numpy as np
 from scipy.stats import ttest_rel
 import tensorflow as tf
 from tqdm import tqdm
 
 
-
 # from data.data_functions import baseline_input_fn
 # from env.enviroments import SimosFoodGroup
 from models.layers import GraphAttentionEncoder,GraphAttentionDecoder
 
+# Code version 1 
 
+# Baseline Model
+class BaselineNet():
+    def __init__(self, input_size, output_size):
+        self.model = keras.Sequential(
+            layers=[
+                keras.Input(shape=(input_size,)),
+                layers.Dense(64, activation="relu", name="relu_layer"),
+                layers.Dense(output_size, activation="linear", name="linear_layer")
+            ],
+            name="baseline")
+        self.optimizer = tf.keras.optimizers.Adam(learning_rate=3e-2)
+
+    def forward(self, observations):
+        output = tf.squeeze(self.model(observations))
+        return output
+
+    def update(self, observations, target):
+        with tf.GradientTape() as tape:
+            predictions = self.forward(observations)
+            loss = tf.keras.losses.mean_squared_error(y_true=target, y_pred=predictions)
+        grads = tape.gradient(loss, self.model.trainable_weights)
+        self.optimizer.apply_gradients(zip(grads, self.model.trainable_weights))
+
+
+
+
+
+class PolicyNet():
+    def __init__(self, input_size, output_size):
+        self.model = keras.Sequential(
+            layers=[
+                keras.Input(shape=(input_size,)),
+                layers.Dense(64, activation="relu", name="relu_layer"),
+                layers.Dense(output_size, activation="linear", name="linear_layer")
+            ],
+            name="policy")
+
+    def action_distribution(self, observations):
+        logits = self.model(observations)
+        return tfp.distributions.Categorical(logits=logits)
+
+    def sample_action(self, observations):
+        sampled_actions = self.action_distribution(observations).sample().numpy()
+        return sampled_actions
+
+
+# Code version 2
 
 def set_decode_type(model, decode_type):
     model.set_decode_type(decode_type)
@@ -365,3 +409,5 @@ def model_skeleton( params):
     optimizer = tf.keras.optimizers.Adam(params['learning_rate'])
 
     return optimizer, model_tf, baseline
+
+

@@ -10,12 +10,6 @@ from training.training_functions import train
 
 
 
-# Metaparameters
-metaparameters = create_meta_parameters()
-
-# Data sources
-validation_dataset = eval_input_fn(metaparameters)
-
-# Train operation
-# model = train(validation_dataset, metaparameters,config)
-
+# env = gym.make("CartPole-v0")
+model = PolicyGradient(env)
+model.train()
