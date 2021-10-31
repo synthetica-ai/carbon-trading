@@ -15,7 +15,9 @@ class CarbonEnv(gym.Env):
 
     """
 
-    def __init__(self, data_dict):
+    def __init__(self, data_dict = { "fleet_path":'data/fleet_small.csv',
+                                    "ports_path":'data/ports_10.csv',
+                                    "dm_path" : 'data/distance_matrix.csv'}):
         super().__init__()
 
         self.data = data_dict
@@ -28,12 +30,12 @@ class CarbonEnv(gym.Env):
 
         NUM_SHIPS = len(self.fleet)
         NUM_PORTS = len(self.ports)
-        NUM_DAILY_CONTRACTS = NUM_SHIPS * NUM_PORTS
+        NUM_DAILY_CONTRACTS = 4#NUM_SHIPS * NUM_PORTS
         SET_OF_SPEEDS = [10, 12, 14]
         NUM_SPEEDS = len(SET_OF_SPEEDS)
 
         # the observation space changes daily based on the step==1 day
-        observation_space = spaces.Dict({
+        self.observation_space = spaces.Dict({
             "contracts": spaces.Discrete(NUM_DAILY_CONTRACTS,),
             "ships": spaces.Discrete(NUM_SHIPS,)
         })
@@ -50,7 +52,7 @@ class CarbonEnv(gym.Env):
         # })
 
         # The action space should be described in a daily manner as well
-        action_space = spaces.Dict({
+        self.action_space = spaces.Dict({
             # we loop over the ships for the contracts of the day specified by the step
             # the actions we can take for each ship are:
             "choose_contract": spaces.Discrete(NUM_DAILY_CONTRACTS),
