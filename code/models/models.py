@@ -58,11 +58,17 @@ class PolicyNet():
         embedding = layers.Dense(32, activation="relu", kernel_initializer=initializer, name="enc_dense_3")(x)
 
         # Contracts head
-        #TODO concat embedding
+        #TODO concat fleet with embedding
         x = layers.Dense(32, activation="relu", kernel_initializer=initializer,name="contract_dense_1")(embedding)
         x = layers.Dense(64, activation="relu", kernel_initializer=initializer, name="contract_dense_2")(x)
         x = layers.Dense(256, activation="relu", kernel_initializer=initializer, name="contract_dense_3")(x)
         contracts_output = layers.Dense(output_size, activation="relu", kernel_initializer=initializer, name="contract_output")(x)
+
+        #TODO concat fleet with embedding
+        x = layers.Dense(32, activation="relu", kernel_initializer=initializer,name="speed_dense_1")(embedding)
+        x = layers.Dense(64, activation="relu", kernel_initializer=initializer, name="speed_dense_2")(x)
+        x = layers.Dense(256, activation="relu", kernel_initializer=initializer, name="speed_dense_3")(x)
+        speed_output = layers.Dense(output_size, activation="relu", kernel_initializer=initializer, name="speed_output")(x)
 
         model = keras.Model(inputs=[contract_input, fleet_input], 
               outputs =[contract_output, speed_output], 
