@@ -4,6 +4,70 @@ import numpy as np
 
 
 
+class ContractEncoder(tf.keras.layers.Layer):  # TODO bug is here
+
+    def __init__(self,
+                 emb_dim):
+        #                  num_heads,
+        #                  tanh_clipping=10,
+        #                  decode_type=None):
+
+        super().__init__()
+#         self.contract_input = layers.Input(shape=36, name="contracts")
+        self.emb_dim = emb_dim
+        self.dense1 = tf.keras.layers.Dense(
+            256, activation="relu", name='dense1')
+        self.dense2 = tf.keras.layers.Dense(
+            64, activation="relu", name='dense2')
+        self.embedding = tf.keras.layers.Dense(self.emb_dim, name='emb')
+
+    def call(self, x):
+        #         contract_input = layers.Input(shape=(IMG_SIZE, IMG_SIZE, 3), name="contracts")
+        #         fleet_input = layers.Input(shape=(IMG_SIZE, IMG_SIZE, 3), name="fleet")
+
+        # Encoding part
+        #         initializer = tf.keras.initializers.GlorotUniform()
+        x = self.dense1(x)
+        x = self.dense2(x)
+        embedding = self.embedding(x)
+        return embedding
+
+
+
+
+class ShipDecoder(tf.keras.layers.Layer):  # TODO bug is here
+
+    def __init__(self,
+                 output_size):
+        #                  num_heads,
+        #                  tanh_clipping=10,
+        #                  decode_type=None):
+
+        super().__init__()
+#         self.contract_input = layers.Input(shape=36, name="contracts")
+        self.output_size = output_size
+        self.dense_in = tf.keras.layers.Dense(
+            256, activation="relu", name='relu_layer')
+        self.dense_out = tf.keras.layers.Dense(
+            self.output_size, activation="linear", name='linear_layer')
+
+    def call(self, emb, fleet_tensor):
+        #         contract_input = layers.Input(shape=(IMG_SIZE, IMG_SIZE, 3), name="contracts")
+        #         fleet_input = layers.Input(shape=(IMG_SIZE, IMG_SIZE, 3), name="fleet")
+        #         for i in range(env.fleet):
+        x = tf.concat([emb, fleet_tensor], 1)
+        x = self.dense_in(x)
+        logits = self.dense_out(x)
+
+        return logits
+
+
+
+
+
+
+
+
 class MultiHeadAttention(tf.keras.layers.Layer):
     """ Attention Layer - multi-head scaled dot product attention (for encoder and decoder)
         Args:
@@ -282,10 +346,10 @@ class GraphAttentionDecoder(tf.keras.layers.Layer): # TODO bug is here
         all_cur_embedded_node = tf.gather(embeddings, tf.cast(state.prev_a_list, tf.int32), batch_dims=1)
         #times
         times = state.truck_cur_times[:,None]
-        times_list = [y[:,None] for y in tf.unstack(times,axis=1)] 
+        times_list = [y[:,None] for y in tf.unstack(times,axis=1)]
         #demands
         dems = state.vehicle_list- state.used_capacity_list
-        dems_list = [y[:,None] for y in tf.unstack(dems,axis=1)] 
+        dems_list = [y[:,None] for y in tf.unstack(dems,axis=1)]
 
         #concat features
         all_cur_embedded_node_list = [x for x in tf.unstack(all_cur_embedded_node,axis=1)]
@@ -402,13 +466,13 @@ class GraphAttentionDecoder(tf.keras.layers.Layer): # TODO bug is here
         i = 0
 
         while not state.all_finished():
-            
+
             for vehicle_id in range(len(state.vehicle_list)):
                 v_id = vehicle_id
                 vehicle_id = tf.repeat(tf.expand_dims([vehicle_id],0),self.batch_size,0)
                 # print(vehicle_id,state.spare[v_id])
                 if state.spare[v_id]:
-                    continue                
+                    continue
                 step_context = self.get_step_context(state, self.embeddings,vehicle_id)  # (batch_size, 1, input_dim + 1)
                 Q_step_context = self.wq_step_context(step_context)  # (batch_size, 1, output_dim)
                 Q = Q_context + Q_step_context

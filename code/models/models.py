@@ -1,10 +1,11 @@
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras import layers 
+from tensorflow.keras import layers
 from tensorflow.keras import Input, Model
 import tensorflow_probability as tfp
 import numpy as np
-
+from env.env import CarbonEnv
+from models.layers import ContractEncoder, ShipDecoder
 
 import numpy as np
 from scipy.stats import ttest_rel
@@ -14,18 +15,24 @@ from tqdm import tqdm
 
 # from data.data_functions import baseline_input_fn
 # from env.enviroments import SimosFoodGroup
-from models.layers import GraphAttentionEncoder,GraphAttentionDecoder
 
-# Code version 1 
+
+# Code version 1
 
 # Baseline Model
 class BaselineNet():
-    def __init__(self, input_size, output_size):
+    def __init__(self, contract_tensor, fleet_tensor,  input_size, output_size):
+
+        contract_input = layers.Input(
+            shape=(IMG_SIZE, IMG_SIZE, 3), name="contracts")
+        fleet_input = layers.Input(shape=(IMG_SIZE, IMG_SIZE, 3), name="fleet")
+
         self.model = keras.Sequential(
             layers=[
                 keras.Input(shape=(input_size,)),
                 layers.Dense(64, activation="relu", name="relu_layer"),
-                layers.Dense(output_size, activation="linear", name="linear_layer")
+                layers.Dense(output_size, activation="linear",
+                             name="linear_layer")
             ],
             name="baseline")
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=3e-2)
@@ -37,48 +44,75 @@ class BaselineNet():
     def update(self, observations, target):
         with tf.GradientTape() as tape:
             predictions = self.forward(observations)
-            loss = tf.keras.losses.mean_squared_error(y_true=target, y_pred=predictions)
+            loss = tf.keras.losses.mean_squared_error(
+                y_true=target, y_pred=predictions)
         grads = tape.gradient(loss, self.model.trainable_weights)
-        self.optimizer.apply_gradients(zip(grads, self.model.trainable_weights))
-
-
-
+        self.optimizer.apply_gradients(
+            zip(grads, self.model.trainable_weights))
 
 
 class PolicyNet():
-    def __init__(self, input_size, output_size):
+    def __init__(self, contract_tensor, fleet_tensor, input_size, output_size):
 
-        contract_input = layers.Input(shape=(IMG_SIZE, IMG_SIZE, 3), name="contracts")
-        fleet_input = layers.Input(shape=(IMG_SIZE, IMG_SIZE, 3), name="fleet")
-        
+        #self.encoding_nn = EncoderModel()
+        num_contracts = contract_tensor.shape[0]
+        num_contract_feats = contract_tensor.shape[1]
+        num_ships = fleet_tensor.shape[0]
+        num_fleet_features = fleet_tensor.shape[1]
+
+        contract_input = layers.Input(
+            shape=(None, num_contracts, num_contract_feats), name="contracts")
+        fleet_input = layers.Input(
+            shape=(None, num_ships, num_fleet_features), name="fleet")
+
         # Encoding part
         initializer = tf.keras.initializers.GlorotUniform()
-        x = layers.Dense(256, activation="relu", kernel_initializer=initializer, name="enc_dense_1")(contracts_input)
-        x = layers.Dense(64, activation="relu", kernel_initializer=initializer, name="enc_dense_2")(x)
-        embedding = layers.Dense(32, activation="relu", kernel_initializer=initializer, name="enc_dense_3")(x)
+        x = layers.Dense(256, activation="relu", kernel_initializer=initializer,
+                         name="enc_dense_1")(contract_input)
+        x = layers.Dense(64, activation="relu",
+                         kernel_initializer=initializer, name="enc_dense_2")(x)
+        embedding = layers.Dense(
+            32, activation="relu", kernel_initializer=initializer, name="enc_dense_3")(x)
+
+        # TODO concat context tensor with embedding san allo layer
+        # self.decoder = ContextDecoder(input_dim = self.embedding,)
+
+        # ena allo layer context layer pou tha kanei react me to environment kai na pairnw me mask klp ta info pou xreiazomai
+        # na allaksw to call wste na apeikonizetai to reaction me to environment
 
         # Contracts head
-        #TODO concat fleet with embedding
-        x = layers.Dense(32, activation="relu", kernel_initializer=initializer,name="contract_dense_1")(embedding)
-        x = layers.Dense(64, activation="relu", kernel_initializer=initializer, name="contract_dense_2")(x)
-        x = layers.Dense(256, activation="relu", kernel_initializer=initializer, name="contract_dense_3")(x)
-        contracts_output = layers.Dense(output_size, activation="relu", kernel_initializer=initializer, name="contract_output")(x)
+        # TODO concat fleet with embedding
+        x = layers.Dense(32, activation="relu", kernel_initializer=initializer,
+                         name="contract_dense_1")(embedding)
+        x = layers.Dense(64, activation="relu",
+                         kernel_initializer=initializer, name="contract_dense_2")(x)
+        x = layers.Dense(256, activation="relu",
+                         kernel_initializer=initializer, name="contract_dense_3")(x)
+        contract_output = layers.Dense(
+            output_size, activation="relu", kernel_initializer=initializer, name="contract_output")(x)
 
-        #TODO concat fleet with embedding
-        x = layers.Dense(32, activation="relu", kernel_initializer=initializer,name="speed_dense_1")(embedding)
-        x = layers.Dense(64, activation="relu", kernel_initializer=initializer, name="speed_dense_2")(x)
-        x = layers.Dense(256, activation="relu", kernel_initializer=initializer, name="speed_dense_3")(x)
-        speed_output = layers.Dense(output_size, activation="relu", kernel_initializer=initializer, name="speed_output")(x)
+        # Speed head
 
-        model = keras.Model(inputs=[contract_input, fleet_input], 
-              outputs =[contract_output, speed_output], 
-              name="CarbonNetPolicy")
+        # TODO concat fleet with embedding
+        x = layers.Dense(32, activation="relu",
+                         kernel_initializer=initializer, name="speed_dense_1")(embedding)
+        x = layers.Dense(64, activation="relu",
+                         kernel_initializer=initializer, name="speed_dense_2")(x)
+        x = layers.Dense(256, activation="relu",
+                         kernel_initializer=initializer, name="speed_dense_3")(x)
+        speed_output = layers.Dense(
+            output_size, activation="relu", kernel_initializer=initializer, name="speed_output")(x)
+
+        # model = keras.Model(inputs=[contract_input, fleet_input],
+        #       outputs =[contract_output, speed_output],
+        #       name="CarbonNetPolicy")
 
         self.model = keras.Sequential(
             layers=[
                 keras.Input(shape=(input_size,)),
                 layers.Dense(64, activation="relu", name="relu_layer"),
-                layers.Dense(output_size, activation="linear", name="linear_layer")
+                layers.Dense(output_size, activation="linear",
+                             name="linear_layer")
             ],
             name="policy")
 
@@ -87,8 +121,27 @@ class PolicyNet():
         return tfp.distributions.Categorical(logits=logits)
 
     def sample_action(self, observations):
-        sampled_actions = self.action_distribution(observations).sample().numpy()
+        sampled_actions = self.action_distribution(
+            observations).sample().numpy()
         return sampled_actions
+
+
+class Encoder_Decoder(tf.keras.Model):
+    def __init__(self, emb_dim, output_size):
+
+        super().__init__()
+        self.emb_dim = emb_dim
+        self.output_size = output_size
+        self.encoder = ContractEncoder(emb_dim=self.emb_dim)
+
+        self.decoder = ShipDecoder(output_size=self.output_size)
+
+    def call(self, contract_input, ship_input):
+        embeddings = self.encoder(contract_input)
+
+        logits = self.decoder(embeddings, ship_input)
+
+        return logits
 
 
 # Code version 2
@@ -114,7 +167,7 @@ class PolicyNet():
 #         self.distance_tensor = tf.constant(params['distance_tensor'],dtype = tf.float32)
 #         self.duration_tensor = tf.constant(params['duration_tensor'],dtype = tf.float32)
 #         self.truck_tensor = tf.sort(tf.constant(params['truck_capacities']), direction ='DESCENDING')
-        
+
 #         self.start_time_windows = tf.reshape(tf.concat([tf.constant([[0.0]]),params['start_windows']],axis = 1),[-1])
 #         self.end_time_windows = tf.reshape(tf.concat([tf.constant([[1.0]]),params['end_windows']],axis = 1),[-1])
 #         self.node_cap = params['node_cap']
@@ -147,7 +200,7 @@ class PolicyNet():
 #     def call(self, input, return_pi = False):
 
 #         embeddings, mean_graph_emb = self.embedder(input)
-        
+
 #         # ei = tf.reshape(tf.concat([tf.constant([[0.0]]),input[3]],axis = 1),[-1])
 #         # li = tf.reshape(tf.concat([tf.constant([[0.0]]),input[4]],axis = 1),[-1])
 #         ei = tf.concat([tf.repeat(tf.constant([[0.0]]),tf.shape(input[3])[0],0),input[3]],axis = 1)[0]
@@ -167,9 +220,6 @@ class PolicyNet():
 #             return cost, ll, pi,distance_cost, earliness_cost, tardiness_cost
 
 #         return cost, ll,  distance_cost, earliness_cost, tardiness_cost
-
-
-
 
 
 # def copy_of_tf_model(model, params):
@@ -216,11 +266,11 @@ class PolicyNet():
 #     # n_batches = params['n_rollout_batches'] if mode == 'train' else params['n_val_batches']
 #     # print("@@@@",mode,"\n")
 #     for batch in dataset:
-        
+
 #         cost, _, distance_cost,earliness_cost, tardiness_cost  = model(batch)
 #         costs_list.append(cost)
 #         distance_list.append(distance_cost)
-#         earliness_list.append(earliness_cost) 
+#         earliness_list.append(earliness_cost)
 #         tardiness_list.append(tardiness_cost)
 
 #     return tf.concat(costs_list, axis=0), tf.concat(distance_list, axis=0), tf.concat(earliness_list, axis=0), tf.concat(tardiness_list, axis=0)
@@ -344,7 +394,7 @@ class PolicyNet():
 
 #     def epoch_callback(self, model, epoch, params):
 #         """Compares current baseline model with the training model and updates baseline if it is improved
-#         """ 
+#         """
 
 #         self.cur_epoch = epoch
 
@@ -416,10 +466,9 @@ class PolicyNet():
 #     return model_loaded
 
 
-
 # def model_skeleton( params):
-#     #CHECK POINT 
-#     if params['from_checkpoint']:        
+#     #CHECK POINT
+#     if params['from_checkpoint']:
 #         model_tf = load_tf_model(path = params['model_checkpoint'],params = params)
 #     else:
 #         # Initialize model
@@ -438,5 +487,3 @@ class PolicyNet():
 #     optimizer = tf.keras.optimizers.Adam(params['learning_rate'])
 
 #     return optimizer, model_tf, baseline
-
-
