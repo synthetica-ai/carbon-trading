@@ -1,6 +1,5 @@
 import gym
 from gym import spaces
-from gym.spaces.discrete import Discrete
 import pandas as pd
 import numpy as np
 import tensorflow as tf
@@ -20,24 +19,24 @@ class CarbonEnv(gym.Env):
                                   "dm_path": 'data/distance_matrix.csv'}):
         super().__init__()
 
-        self.data = data_dict
+        self.data_dict = data_dict
         # get fleet info
-        self.fleet = pd.read_csv(self.data['fleet_path'])
+        self.fleet = pd.read_csv(self.data_dict['fleet_path'])
         # get port info
-        self.ports = pd.read_csv(self.data['ports_path'])
+        self.ports = pd.read_csv(self.data_dict['ports_path'])
         # get distance matrix
-        self.dm = pd.read_csv(self.data['dm_path'])
+        self.dm = pd.read_csv(self.data_dict['dm_path'])
 
-        NUM_SHIPS = len(self.fleet)
-        NUM_PORTS = len(self.ports)
-        NUM_DAILY_CONTRACTS = 4  # NUM_SHIPS * NUM_PORTS
-        SET_OF_SPEEDS = [10, 12, 14]
-        NUM_SPEEDS = len(SET_OF_SPEEDS)
+        self.NUM_SHIPS = len(self.fleet)
+        self.NUM_PORTS = len(self.ports)
+        self.NUM_DAILY_CONTRACTS = 4
+        self.SET_OF_SPEEDS = [10, 12, 14]
+        self.NUM_SPEEDS = len(self.SET_OF_SPEEDS)
 
-        # the observation space changes daily based on the step==1 day
-        self.observation_space = spaces.Dict({
-            "contracts": spaces.Discrete(NUM_DAILY_CONTRACTS),
-            "ships": spaces.Discrete(NUM_SHIPS)
+        # the observation space changes daily based on the step == 1 day
+        observation_space = spaces.Dict({
+            "contracts": spaces.Discrete(self.NUM_DAILY_CONTRACTS),
+            "ships": spaces.Discrete(self.NUM_SHIPS)
         })
 
         # action_space = spaces.Dict({
@@ -52,11 +51,11 @@ class CarbonEnv(gym.Env):
         # })
 
         # The action space should be described in a daily manner as well
-        self.action_space = spaces.Dict({
+        action_space = spaces.Dict({
             # we loop over the ships for the contracts of the day specified by the step
             # the actions we can take for each ship are:
-            "choose_contract": spaces.Discrete(NUM_DAILY_CONTRACTS),
-            "choose_speed": spaces.Discrete(NUM_SPEEDS)
+            "choose_contract": spaces.Discrete(self.NUM_DAILY_CONTRACTS),
+            "choose_speed": spaces.Discrete(self.NUM_SPEEDS)
 
         })
 
@@ -75,7 +74,7 @@ class CarbonEnv(gym.Env):
 
         pass
 
-    def reset(self):
+    def reset(self, day=1):
         """
         `reset` sets the environment to its initial state
 
@@ -88,35 +87,34 @@ class CarbonEnv(gym.Env):
         self.done = False
 
         # Set the fleet to its initial state
-        self.fleet = pd.read_csv(self.data['fleet_path'])
+        self.fleet = pd.read_csv(self.data_dict['fleet_path'])
 
         # Calculate fleet's required cii
         self.fleet['cii_threshold'] = self.fleet['dwt'].map(cii_expected)
 
         # set fleet at random ports
         self.fleet['current_port'] = np.random.randint(
-            1, 11, self.fleet.shape[0])
+            1, self.NUM_PORTS+1, self.NUM_DAILY_CONTRACTS)
 
         # create a fleet tensor from the fleet df
         self.fleet_tensor = self.create_tensor_fleet()
 
-        # Create the contract tensor for the whole year
-        self.con_tensor = self.create_tensor_contracts()
+        # Create the contracts for the first day of the year
+        self.contracts_tensor = self.create_tensor_contracts(day)
 
-        # These contracts must be all passed to the mlp encoder
+        # These contracts are passed to the mlp encoder
 
-        # Moreover as part of the initial observation I should get:
+        # Moreover as part of the initial observation I should get the fleet tensor:
 
-        # 1. The 40 first tensor contracts
-        # 2. The fleet tensor
+        # The fleet tensor
 
-        # Getting the 40 first tensor contract
-        self.idx_min, self.idx_max = 0, 40
-        self.con_first_40 = self.con_tensor[:, self.idx_min:self.idx_max, :]
+        # # Getting the 40 first tensor contract
+        # self.idx_min, self.idx_max = 0, 40
+        # self.con_first_40 = self.con_tensor[:, self.idx_min:self.idx_max, :]
 
         # the ships are also part of the initial state / observation
 
-        initial_state = {"contracts": self.con_first_40,
+        initial_state = {"contracts": self.contracts_tensor,
                          "ships": self.fleet_tensor}
 
         return initial_state
@@ -128,7 +126,6 @@ class CarbonEnv(gym.Env):
         con_df = pd.DataFrame(columns=['start_port_number', 'end_port_number', 'contract_type',
                               'start_day', 'end_day', 'cargo_size', 'contract_duration', 'port_distance', 'value'])
         ports = self.ports.loc[:, ['number', 'name', 'country']]
-        ports_array = ports.number.to_numpy()
         ship_types = np.array(['supramax', 'ultramax', 'panamax', 'kamsarmax'])
 
         con_df['start_port_number'] = np.random.randint(
@@ -142,7 +139,7 @@ class CarbonEnv(gym.Env):
         # check that start and end ports are different
         while sum(same_ports) != 0:
             con_df['end_port_number'] = np.where(same_ports, np.random.randint(
-                low=1, high=11, size=same_ports.shape), con_df['end_port_number'])
+                low=1, high=self.NUM_PORTS+1, size=same_ports.shape), con_df['end_port_number'])
             same_ports = con_df['start_port_number'] == con_df['end_port_number']
 
         con_df['start_day'] = day
@@ -153,6 +150,7 @@ class CarbonEnv(gym.Env):
 
         dist_df = self.dm.iloc[start_port_numbers_index,
                                end_port_numbers_index]
+
         # the distance
         con_df['port_distance'] = pd.Series(np.diag(dist_df)).reindex()
 
@@ -216,7 +214,7 @@ class CarbonEnv(gym.Env):
 
         return con_df
 
-    def create_tensor_contracts(self, day=1):
+    def create_tensor_contracts(self, day):
         """
         `create_tensor_contracts` creates a tensor out of the contracts dataframe
         """
