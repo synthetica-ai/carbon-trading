@@ -127,28 +127,32 @@ class CarbonEnv(gym.Env):
         """
         con_df = pd.DataFrame(columns=['start_port_number', 'end_port_number', 'contract_type',
                               'start_day', 'end_day', 'cargo_size', 'contract_duration', 'port_distance', 'value'])
-        ports = self.ports.number.to_numpy()
+        ports = self.ports.loc[:, ['number', 'name', 'country']]
+        ports_array = ports.number.to_numpy()
         ship_types = np.array(['supramax', 'ultramax', 'panamax', 'kamsarmax'])
-        con_df['start_port_number'] = np.repeat(ports, 4)
-        con_df['contract_type'] = np.tile(ship_types, 10)
-        num_contracts = len(ship_types) * len(ports)
+
+        con_df['start_port_number'] = np.random.randint(
+            1, self.NUM_PORTS+1, size=self.NUM_DAILY_CONTRACTS)
+        con_df['contract_type'] = np.random.choice(
+            ship_types, size=self.NUM_DAILY_CONTRACTS)
         con_df['end_port_number'] = np.random.randint(
-            low=1, high=11, size=(num_contracts,))
+            1, self.NUM_PORTS+1, size=self.NUM_DAILY_CONTRACTS)
+
         same_ports = con_df['start_port_number'] == con_df['end_port_number']
+        # check that start and end ports are different
         while sum(same_ports) != 0:
             con_df['end_port_number'] = np.where(same_ports, np.random.randint(
                 low=1, high=11, size=same_ports.shape), con_df['end_port_number'])
             same_ports = con_df['start_port_number'] == con_df['end_port_number']
 
-        # setting the start_day to the current day
         con_df['start_day'] = day
 
         # get distance between start and end ports arrays
         start_port_numbers_index = con_df['start_port_number'] - 1
         end_port_numbers_index = con_df['end_port_number']
+
         dist_df = self.dm.iloc[start_port_numbers_index,
                                end_port_numbers_index]
-
         # the distance
         con_df['port_distance'] = pd.Series(np.diag(dist_df)).reindex()
 
@@ -182,10 +186,8 @@ class CarbonEnv(gym.Env):
 
         # pick distance between ports from df
         dx = con_df['port_distance']
-
         # find duration of trip between ports with picked speed in hours
         dt_hours = (dx / u_picked).round()
-
         # find duration of trip between ports in days
         dt_days = (dt_hours / 24).round()
 
@@ -193,17 +195,15 @@ class CarbonEnv(gym.Env):
         x = self.dm.iloc[:, 1:].to_numpy(dtype=np.int32)
         mask_upper = np.triu_indices_from(x, k=1)
         triu = x[mask_upper]
-
         # average voyage distance between ports in the distance matrix
         avg_dx = np.round(triu.mean())
-
         # average voyage duration between ports with picked speed in hours
         avg_dt_hours = np.round(avg_dx/u_picked)
-
         # # average voyage duration between ports with picked speed in days
         avg_dt_days = np.round(avg_dt_hours / 24)
 
         # total duration
+
         con_df['contract_duration'] = dt_days + avg_dt_days
 
         # end_day ends at 23:59
@@ -216,16 +216,15 @@ class CarbonEnv(gym.Env):
 
         return con_df
 
-    def create_tensor_contracts(self):
+    def create_tensor_contracts(self, day=1):
         """
         `create_tensor_contracts` creates a tensor out of the contracts dataframe
         """
         empty = pd.DataFrame(columns=['start_port_number', 'end_port_number', 'contract_type',
                              'start_day', 'end_day', 'cargo_size', 'contract_duration', 'port_distance', 'value'])
         contracts_df = empty.copy()
-        for i in range(1, 365+1):
-            x = self.create_contracts(day=i)
-            contracts_df = contracts_df.append(x, ignore_index=True)
+        x = self.create_contracts(day)
+        contracts_df = contracts_df.append(x, ignore_index=True)
 
         # convert everything to float for tensorflow compatibility
         contracts_df = contracts_df.astype(np.float32)
