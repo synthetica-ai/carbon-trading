@@ -13,27 +13,27 @@ from shutil import copyfile
 
 from data.data_functions import train_input_fn
 from env.env import CarbonEnv
-from models.models import set_decode_type,validate, model_skeleton, BaselineNet, PolicyNet
-
+from models.models import set_decode_type, validate, model_skeleton, BaselineNet, PolicyNet
 
 
 class PolicyGradient(object):
-    def __init__(self, env, num_iterations=2, batch_size=2000, max_ep_len=200, output_path="../results/"):
+    def __init__(self, env, num_iterations=2, batch_size=2000, max_ep_len=365*4, output_path="../results/"):
         self.output_path = output_path
         if not exists(output_path):
             makedirs(output_path)
         self.env = env
-        self.observation_dim = self.env.observation_space.shape[0]
+        # dhlwsh input
+        #self.observation_dim = self.env.observation_space.shape[0]
         self.action_dim = self.env.action_space.n
         self.gamma = 0.99
         self.num_iterations = num_iterations
         self.batch_size = batch_size
         self.max_ep_len = max_ep_len
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=3e-2)
-        self.policy_net = PolicyNet(input_size=self.observation_dim, output_size=self.action_dim)
-        self.baseline_net = BaselineNet(input_size=self.observation_dim, output_size=1)
+        self.policy_net = PolicyNet(emb=128, output_size=self.action_dim)
+        self.baseline_net = BaselineNet(emb=128, output_size=1)
 
-    def play_games(self, env=None, num_episodes = None):
+    def play_games(self, env=None, num_episodes=10):
         episode = 0
         episode_rewards = []
         paths = []
@@ -47,6 +47,7 @@ class PolicyGradient(object):
             episode_reward = 0
 
             for step in range(self.max_ep_len):
+                # for each ship
                 states.append(state)
                 action = self.policy_net.sample_action(np.atleast_2d(state))[0]
                 state, reward, done, _ = env.step(action)
@@ -75,7 +76,7 @@ class PolicyGradient(object):
         for path in paths:
             rewards = path["reward"]
             returns = []
-            reversed_rewards = np.flip(rewards,0)
+            reversed_rewards = np.flip(rewards, 0)
             g_t = 0
             for r in reversed_rewards:
                 g_t = r + self.gamma*g_t
@@ -87,7 +88,8 @@ class PolicyGradient(object):
     def get_advantage(self, returns, observations):
         values = self.baseline_net.forward(observations).numpy()
         advantages = returns - values
-        advantages = (advantages-np.mean(advantages)) / np.sqrt(np.sum(advantages**2))
+        advantages = (advantages-np.mean(advantages)) / \
+            np.sqrt(np.sum(advantages**2))
         return advantages
 
     def update_policy(self, observations, actions, advantages):
@@ -95,10 +97,13 @@ class PolicyGradient(object):
         actions = tf.convert_to_tensor(actions)
         advantages = tf.convert_to_tensor(advantages)
         with tf.GradientTape() as tape:
-            log_prob = self.policy_net.action_distribution(observations).log_prob(actions)
-            loss = -tf.math.reduce_mean(log_prob * tf.cast(advantages, tf.float32))
+            log_prob = self.policy_net.action_distribution(
+                observations).log_prob(actions)
+            loss = -tf.math.reduce_mean(log_prob *
+                                        tf.cast(advantages, tf.float32))
         grads = tape.gradient(loss, self.policy_net.model.trainable_weights)
-        self.optimizer.apply_gradients(zip(grads, self.policy_net.model.trainable_weights))
+        self.optimizer.apply_gradients(
+            zip(grads, self.policy_net.model.trainable_weights))
 
     def train(self):
         all_total_rewards = []
@@ -106,7 +111,8 @@ class PolicyGradient(object):
         for t in range(self.num_iterations):
             paths, total_rewards = self.play_games()
             all_total_rewards.extend(total_rewards)
-            observations = np.concatenate([path["observation"] for path in paths])
+            observations = np.concatenate(
+                [path["observation"] for path in paths])
             actions = np.concatenate([path["action"] for path in paths])
             returns = self.get_returns(paths)
             advantages = self.get_advantage(returns, observations)
@@ -114,9 +120,9 @@ class PolicyGradient(object):
             self.update_policy(observations, actions, advantages)
             avg_reward = np.mean(total_rewards)
             averaged_total_rewards.append(avg_reward)
-            print("Average reward for batch {}: {:04.2f}".format(t,avg_reward))
+            print("Average reward for batch {}: {:04.2f}".format(t, avg_reward))
         print("Training complete")
-        np.save(self.output_path+ "rewards.npy", averaged_total_rewards)
+        np.save(self.output_path + "rewards.npy", averaged_total_rewards)
         # export_plot(averaged_total_rewards, "Reward", "CartPole-v0", self.output_path + "rewards.png")
 
     def eval(self, env, num_episodes=1):
@@ -130,14 +136,12 @@ class PolicyGradient(object):
         self.eval(env=env, num_episodes=1)
 
 
-
-# ## 
+# ##
 # def train(validation_dataset,
-#             params, 
+#             params,
 #             config):
 
 
-    
 #     grad_norm_clipping = params['grad_norm_clipping']
 #     batch_verbose = params['batch_verbose']
 #     graph_size = params['graph_size']
@@ -170,12 +174,12 @@ class PolicyGradient(object):
 #         """
 #         with tf.GradientTape() as tape:
 #             loss, cost, distance_cost, earliness_cost, tardiness_cost = rein_loss(model, inputs, baseline, num_batch)
-#         return loss, cost, tape.gradient(loss, model.trainable_variables),  distance_cost, earliness_cost, tardiness_cost 
+#         return loss, cost, tape.gradient(loss, model.trainable_variables),  distance_cost, earliness_cost, tardiness_cost
 
 #     train_loss_results = []
 #     train_cost_results = []
 #     val_cost_avg = []
-#     best_cost = 1e+30 
+#     best_cost = 1e+30
 
 
 #     # Training loop
@@ -232,20 +236,20 @@ class PolicyGradient(object):
 
 #         train_loss_results.append(epoch_loss_avg.result())
 #         train_cost_results.append(epoch_cost_avg.result())
-        
+
 #         # Validate current model
 #         val_cost, distance_cost, earliness_cost, tardiness_cost = validate(validation_dataset, model_tf, params)
 #         val_cost_avg.append(val_cost)
 
 #         # reduce lr on plateau
 #         print(f"My best cost :{best_cost}, val_cost: {val_cost}")
-#         improvement = val_cost < best_cost# - params['reduce_lr_delta'] 
+#         improvement = val_cost < best_cost# - params['reduce_lr_delta']
 
 #         if params['lr_scheduler'] == 'reduce_on_plateau':
 #             print(f"My learning rate is {optimizer._decayed_lr(tf.float32)} and improvement is {improvement}")
 #             print(f"My wait is {wait}")
 #             if not improvement:
-#                 wait +=1                 
+#                 wait +=1
 #                 if wait > params['patience']:
 #                     new_lr = max(optimizer.learning_rate * params['reduce_lr_factor'], params['min_lr'])
 #                     optimizer.learning_rate = new_lr
@@ -258,7 +262,7 @@ class PolicyGradient(object):
 #             print(colored(f"My learning rate is {optimizer._decayed_lr(tf.float32)}",'red'))
 
 
-#         best_cost = min(val_cost,best_cost) 
+#         best_cost = min(val_cost,best_cost)
 
 #         # Simos Actual problem
 #         set_decode_type(model_tf, "greedy")
@@ -266,12 +270,10 @@ class PolicyGradient(object):
 #         set_decode_type(model_tf, "sampling")
 
 
-#         print(colored(f"Epoch {epoch} -- Loss: {epoch_loss_avg.result()} Cost: {epoch_cost_avg.result()} Validation cost: {val_cost}\n\n",'green')) 
-        
+#         print(colored(f"Epoch {epoch} -- Loss: {epoch_loss_avg.result()} Cost: {epoch_cost_avg.result()} Validation cost: {val_cost}\n\n",'green'))
+
 #         epoch_time_end= datetime.now()
 #         epoch_time = (epoch_time_end - epoch_time_start).seconds/60
 #         print(colored(f"Epoch profiling in minutes-- Total epoch :{epoch_time}, Train datagen : {train_datagen_time}, baseline eval : {baseline_eval_time}",'yellow'))
 
 #     return model_tf, best_cost, distance_cost, earliness_cost, tardiness_cost,cost_, distance_cost_, earliness_cost_, tardiness_cost_
-
-

@@ -1,5 +1,6 @@
 import gym
 from gym import spaces
+from gym.spaces import Dict, Box, Discrete
 import pandas as pd
 import numpy as np
 import tensorflow as tf
@@ -20,12 +21,19 @@ class CarbonEnv(gym.Env):
         super().__init__()
 
         self.data_dict = data_dict
-        # get fleet info
+
+        # get fleet info in df
         self.fleet = pd.read_csv(self.data_dict['fleet_path'])
-        # get port info
-        self.ports = pd.read_csv(self.data_dict['ports_path'])
-        # get distance matrix
-        self.dm = pd.read_csv(self.data_dict['dm_path'])
+
+        # get port info in df
+        ports = pd.read_csv(self.data_dict['ports_path'])
+        self.ports = ports.loc[:, ['number', 'name', 'country']]
+
+        # get distance matrix info
+        self.dm_df = pd.read_csv(self.data_dict['dm_path'])
+
+        # get distance matrix as tensor
+        self.dm = self.create_tensor_dm()
 
         self.NUM_SHIPS = len(self.fleet)
         self.NUM_PORTS = len(self.ports)
@@ -34,30 +42,23 @@ class CarbonEnv(gym.Env):
         self.NUM_SPEEDS = len(self.SET_OF_SPEEDS)
 
         # the observation space changes daily based on the step == 1 day
-        observation_space = spaces.Dict({
-            "contracts": spaces.Discrete(self.NUM_DAILY_CONTRACTS),
-            "ships": spaces.Discrete(self.NUM_SHIPS)
+        self.observation_space = Dict({
+            "contracts_state": Discrete(self.NUM_DAILY_CONTRACTS),
+            "ships_state": Discrete(self.NUM_SHIPS),
+            "contracts_mask": Box(0, 1, shape=(self.NUM_DAILY_CONTRACTS,), dtype=np.int64),
+            "ships_mask": Box(0, 1, shape=(self.NUM_SHIPS,), dtype=np.int64)
         })
-
-        # action_space = spaces.Dict({
-        #     # "choose_ship": spaces.Discrete(NUM_SHIPS+1),
-        #     # we loop on every ship and take actions on each of the ships
-        #     # using +1 to account for the case of not choosing a contract
-        #     # for each ship we must choose:
-        #     # * which contract to take among the available which are at most NUM_CONTRACTS+1
-        #     # * which speed to use for the trip
-        #     "choose_contract": spaces.Discrete(NUM_YEARLY_CONTRACTS+1),
-        #     "choose_speed": spaces.Discrete(NUM_SPEEDS+1)
-        # })
 
         # The action space should be described in a daily manner as well
-        action_space = spaces.Dict({
-            # we loop over the ships for the contracts of the day specified by the step
-            # the actions we can take for each ship are:
-            "choose_contract": spaces.Discrete(self.NUM_DAILY_CONTRACTS),
-            "choose_speed": spaces.Discrete(self.NUM_SPEEDS)
+        # self.action_space = spaces.Dict({
+        #     # we loop over the ships for the contracts of the day specified by the step
+        #     # the actions we can take for each ship are:
+        #     #"choose_contract": spaces.Discrete(self.NUM_DAILY_CONTRACTS+1),
+        #     "choose_contract" : spaces.Discrete((self.NUM_DAILY_CONTRACTS*self.NUM_SPEEDS)+1), # choose a contract or not
+        #     "choose_speed": spaces.Discrete(self.NUM_SPEEDS)
 
-        })
+        self.action_space = spaces.Discrete(
+            (self.NUM_DAILY_CONTRACTS*self.NUM_SPEEDS)+1)
 
         self.reset()
 
@@ -72,7 +73,15 @@ class CarbonEnv(gym.Env):
         * info : A dict useful for debugging
         """
 
-        pass
+        # prepei na kanw to step gia ka8e ship
+
+        state, reward, done = self.state, 1, False
+
+        # state = self.contracts_tensor
+
+        # reward =
+
+        return state, reward, done
 
     def reset(self, day=1):
         """
@@ -102,30 +111,47 @@ class CarbonEnv(gym.Env):
         # Create the contracts for the first day of the year
         self.contracts_tensor = self.create_tensor_contracts(day)
 
-        # These contracts are passed to the mlp encoder
+        # Add the ballast distances to the fleet tensor
+        self.fleet_tensor = self.find_ballast()
 
-        # Moreover as part of the initial observation I should get the fleet tensor:
+        # An entity showing which daily contract was taken (1) and which was not (0)
+        #
+        #
+        self.daily_contract_log = np.zeros(self.NUM_DAILY_CONTRACTS)
 
-        # The fleet tensor
+        # similar entity for ship
+        # should stay 1 for as long as this ship is reserved
+        # reserve_duration = (balast_distance of that contract + contract_distance) / picked_speed
+        self.ship_log = np.zeros(self.NUM_SHIPS)
 
-        # # Getting the 40 first tensor contract
-        # self.idx_min, self.idx_max = 0, 40
-        # self.con_first_40 = self.con_tensor[:, self.idx_min:self.idx_max, :]
+        self.state = {"contracts": self.contracts_tensor,
+                      "ships": self.fleet_tensor}
 
-        # the ships are also part of the initial state / observation
+        return self.state
 
-        initial_state = {"contracts": self.contracts_tensor,
-                         "ships": self.fleet_tensor}
+    # def update_intra_statuses(self):
+    #     # tha thn ektelw mesa sth loopa gia ka8e ship
+    #     # ti tha kanw gia ka8e shi
 
-        return initial_state
+    # def update_state_every_day(self):
+    #     """
+
+    #     """
+
+    #     # Baze se
+    #     self.total_contract_log=
+
+    #     mask=np
+
+    #     pass
 
     def create_contracts(self, day=1, seed=None):
         """
         `create_contracts` creats cargo contracts for a specific day of the year
         """
         con_df = pd.DataFrame(columns=['start_port_number', 'end_port_number', 'contract_type',
-                              'start_day', 'end_day', 'cargo_size', 'contract_duration', 'port_distance', 'value'])
-        ports = self.ports.loc[:, ['number', 'name', 'country']]
+                                       'start_day', 'end_day', 'cargo_size', 'contract_duration', 'port_distance', 'value'])
+
         ship_types = np.array(['supramax', 'ultramax', 'panamax', 'kamsarmax'])
 
         con_df['start_port_number'] = np.random.randint(
@@ -148,8 +174,8 @@ class CarbonEnv(gym.Env):
         start_port_numbers_index = con_df['start_port_number'] - 1
         end_port_numbers_index = con_df['end_port_number']
 
-        dist_df = self.dm.iloc[start_port_numbers_index,
-                               end_port_numbers_index]
+        dist_df = self.dm_df.iloc[start_port_numbers_index,
+                                  end_port_numbers_index]
 
         # the distance
         con_df['port_distance'] = pd.Series(np.diag(dist_df)).reindex()
@@ -190,7 +216,7 @@ class CarbonEnv(gym.Env):
         dt_days = (dt_hours / 24).round()
 
         # get upper triangle entries of distance matrix
-        x = self.dm.iloc[:, 1:].to_numpy(dtype=np.int32)
+        x = self.dm_df.iloc[:, 1:].to_numpy(dtype=np.int32)
         mask_upper = np.triu_indices_from(x, k=1)
         triu = x[mask_upper]
         # average voyage distance between ports in the distance matrix
@@ -224,6 +250,8 @@ class CarbonEnv(gym.Env):
         x = self.create_contracts(day)
         contracts_df = contracts_df.append(x, ignore_index=True)
 
+        print(contracts_df)
+
         # convert everything to float for tensorflow compatibility
         contracts_df = contracts_df.astype(np.float32)
 
@@ -241,9 +269,13 @@ class CarbonEnv(gym.Env):
         """
         # keeping only these features from the fleet df
         cols_to_keep = ['ship_number', 'dwt', 'cii_threshold', 'cii',
-                        'current_port', 'current_speed', 'ship_availability']
-        df = self.fleet[cols_to_keep]
+                        'current_port', 'current_speed', 'ship_availability', 'ballast_1', 'ballast_2', 'ballast_3', 'ballast_4']
 
+        self.fleet = self.fleet[cols_to_keep]
+
+        df = self.fleet
+
+        print(df)
         # converting to float for tensorflow compatibility
         df = df.astype(np.float32)
 
@@ -254,3 +286,77 @@ class CarbonEnv(gym.Env):
         tensor = tf.expand_dims(tensor, axis=0)
 
         return tensor
+
+    def create_tensor_dm(self):
+        """
+        `create_tensor_dm` produces a tf tensor out of the distance matrix dataframe
+        Args :
+        * dm_df : A dataframe containing the distance matrix data
+        """
+        dist_cols = self.dm_df.columns.to_list()
+        del dist_cols[0]
+        dm_array = self.dm_df.loc[:, dist_cols].to_numpy()
+        dm_tensor = tf.convert_to_tensor(dm_array)
+        return dm_tensor
+
+    def find_distance(self, port_1_number, port_2_number):
+        """
+        `find_distance` returns the distance between two ports
+        Args:
+        * port_1_number : number of port 1
+        * port_2_number : number of port 2
+        """
+        dist_m = self.dm
+        idx_1 = port_1_number-1
+        idx_2 = port_2_number-1
+        distance = dist_m[idx_1, idx_2]
+        return distance
+
+    def find_ballast(self, num_contracts=4, num_ballasts=4):
+        """
+        `find_ballast` finds the ballast trips of fleet vessels for the new contracts
+        """
+        contracts = self.contracts_tensor
+        fleet = self.fleet_tensor
+
+        distance_matrix = self.dm.numpy()
+
+        # using -1 to get the port indeces
+
+        # start_port idxs
+        sp_idx = contracts[:, :, 0] - 1
+        sp_idx = tf.concat([sp_idx]*4, axis=0)
+
+        # current_port idxs
+        cp_idx = fleet[:, :, 4] - 1
+        cp_idx = tf.transpose(tf.concat([cp_idx]*4, axis=0))
+
+        # get row index
+        row_idx = cp_idx[:, 1].numpy().astype(int)
+
+        # get column index
+        col_idx = sp_idx[0].numpy().astype(int)
+
+        # get ballast data from distance matrix
+        bd = distance_matrix[np.ix_(row_idx, col_idx)]
+
+        # convert back to tf
+        bd = tf.convert_to_tensor(bd)
+
+        # duplicate bd appropriately so that dimensions are appropriate for the mask used later
+        bd = tf.concat([bd]*3, axis=1)
+
+        # casting to float and removing unwanted first column with slicing so that the dimensions align properly
+        bd = tf.cast(bd[:, 1:], dtype=float)
+
+        # creating an array of ones and zeros for the mask
+        oz_array = tf.concat([tf.ones([num_contracts, 7]), tf.zeros(
+            [num_contracts, num_ballasts])], axis=1)
+
+        # casting the oz_array to boolean to create the boolean mask
+        mask = tf.cast(oz_array, dtype='bool')
+
+        # populating the fleet tensor with ballast data for each contract
+        fleet_with_ballast = tf.where(mask, fleet, bd)
+
+        return fleet_with_ballast

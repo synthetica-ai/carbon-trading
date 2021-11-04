@@ -1,4 +1,9 @@
-def create_contracts(dm, ports, day=1, seed=None):
+import numpy as np
+import tensorflow as tf
+import pandas as pd
+
+
+def create_contracts_old(dm, ports, day=1, seed=None):
     """
     A function for creating cargo contracts for a specific day of the year
     """
@@ -156,16 +161,31 @@ def can_serve(vessels_df, contract_df, ports_df):
     pass
 
 
-def find_distance(port_number_1, port_number_2, dist_m):
+def create_tensor_dm(dm_df):
     """
-    find port distances from port numbers
-    port numbers are port are port indices + 1
-    port numbers must be in [1-10] range
+    `create_tensor_dm` produces a tf tensor out of the distance matrix dataframe
+    Args :
+    * dm_df : A dataframe containing the distance matrix data
     """
-    dist_m = dist_m.iloc[:, 1:]
-    idx_1 = port_number_1-1
-    idx_2 = port_number_2-1
-    distance = dist_m.iloc[idx_1, idx_2]
+    dist_cols = dm_df.columns.to_list()
+    del dist_cols[0]
+    dm_array = dm_df.loc[:, dist_cols].to_numpy()
+    dm_tensor = tf.convert_to_tensor(dm_array)
+    return dm_tensor
+
+
+def find_distance(port_1_number, port_2_number, dm):
+    """
+    `find_distance` returns the distance between two ports
+    Args:
+    * port_1_number : number of port 1
+    * port_2_number : number of port 2
+    * dm : distance matrix array or tensor
+    """
+    dist_m = dm
+    idx_1 = port_1_number-1
+    idx_2 = port_2_number-1
+    distance = dist_m[idx_1, idx_2]
     return distance
 
 
@@ -283,3 +303,23 @@ def find_distance(port_number_1, port_number_2, dist_m):
 #         df['end_day'] = df['start_day'] + df['contract_duration'] - 1
 
 #         return df
+
+
+# create tensor contracts old
+
+# empty = pd.DataFrame(columns=['start_port_number','end_port_number','contract_type','start_day','end_day','cargo_size','contract_duration','port_distance','value'])
+# contracts_df = empty.copy()
+# for i in range(1,365+1):
+#     x = create_contracts(day=i)
+#     contracts_df = contracts_df.append(x, ignore_index=True)
+
+# # convert everything to float for tensorflow compatibility
+# contracts_df = contracts_df.astype(np.float32)
+
+# # create the input tensor
+# contracts_tensor = tf.convert_to_tensor(contracts_df)
+
+# # add a batch size dimension
+# contracts_tensor = tf.expand_dims(contracts_tensor,axis=0)
+
+# # contracts tensor is the input tensor

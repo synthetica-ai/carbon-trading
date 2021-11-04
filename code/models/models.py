@@ -1,40 +1,88 @@
 import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
-from tensorflow.keras import Input, Model
+
 import tensorflow_probability as tfp
 import numpy as np
 from env.env import CarbonEnv
-from models.layers import ContractEncoder, ShipDecoder
-
 import numpy as np
-from scipy.stats import ttest_rel
-import tensorflow as tf
-from tqdm import tqdm
+
+# from scipy.stats import ttest_rel
+# from tqdm import tqdm
 
 
 # from data.data_functions import baseline_input_fn
-# from env.enviroments import SimosFoodGroup
+
+
+class Carbon_Model2(tf.keras.Model):  # TODO bug is here
+    def __init__(self, emb_dim, output_size):
+
+        super().__init__()
+
+        #         self.contract_input = layers.Input(shape=36, name="contracts")
+
+        self.emb_dim = emb_dim
+        self.output_size = output_size
+
+        self.dense1 = tf.keras.layers.Dense(256, activation="relu")
+        self.dense2 = tf.keras.layers.Dense(64, activation="relu")
+        self.embedding = tf.keras.layers.Dense(self.emb_dim)
+
+        self.dense_context = tf.keras.layers.Dense(256, activation="relu")
+        self.dense_out = tf.keras.layers.Dense(self.output_size, activation="linear")
+
+    def call(self, contract_tensor, fleet_tensor):
+
+        #         fleet_input = layers.Input(shape=(IMG_SIZE, IMG_SIZE, 3), name="fleet")
+
+        # Encoding part
+        x = self.dense1(contract_tensor)
+        x = self.dense2(x)
+        embedding = self.embedding(x)
+
+        context = tf.concat([embedding, fleet_tensor], 1)
+        context = self.dense_in(context)
+        logits = self.dense_out(context)
+        return logits
+
+
+class Carbon_Model(tf.keras.Model):  # TODO bug is here
+    def __init__(self, emb_dim, output_size):
+
+        super().__init__()
+
+        #         self.contract_input = layers.Input(shape=36, name="contracts")
+
+        self.emb_dim = emb_dim
+        self.output_size = output_size
+
+        self.dense1 = tf.keras.layers.Dense(256, activation="relu")
+        self.dense2 = tf.keras.layers.Dense(64, activation="relu")
+        self.embedding = tf.keras.layers.Dense(self.emb_dim)
+
+        self.dense_context = tf.keras.layers.Dense(256, activation="relu")
+        self.dense_out = tf.keras.layers.Dense(self.output_size, activation="linear")
+
+    def call(self, contract_tensor, fleet_tensor):
+
+        #         fleet_input = layers.Input(shape=(IMG_SIZE, IMG_SIZE, 3), name="fleet")
+
+        # Encoding part
+        x = self.dense1(contract_tensor)
+        x = self.dense2(x)
+        embedding = self.embedding(x)
+
+        context = tf.concat([embedding, fleet_tensor], 1)
+        context = self.dense_in(context)
+        logits = self.dense_out(context)
+        return logits
 
 
 # Code version 1
 
 # Baseline Model
-class BaselineNet():
-    def __init__(self, contract_tensor, fleet_tensor,  input_size, output_size):
+class BaselineNet:
+    def __init__(self, emb, output_size):
 
-        contract_input = layers.Input(
-            shape=(IMG_SIZE, IMG_SIZE, 3), name="contracts")
-        fleet_input = layers.Input(shape=(IMG_SIZE, IMG_SIZE, 3), name="fleet")
-
-        self.model = keras.Sequential(
-            layers=[
-                keras.Input(shape=(input_size,)),
-                layers.Dense(64, activation="relu", name="relu_layer"),
-                layers.Dense(output_size, activation="linear",
-                             name="linear_layer")
-            ],
-            name="baseline")
+        self.model = Carbon_Model2(emb, output_size)
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=3e-2)
 
     def forward(self, observations):
@@ -44,85 +92,26 @@ class BaselineNet():
     def update(self, observations, target):
         with tf.GradientTape() as tape:
             predictions = self.forward(observations)
-            loss = tf.keras.losses.mean_squared_error(
-                y_true=target, y_pred=predictions)
+            loss = tf.keras.losses.mean_squared_error(y_true=target, y_pred=predictions)
         grads = tape.gradient(loss, self.model.trainable_weights)
-        self.optimizer.apply_gradients(
-            zip(grads, self.model.trainable_weights))
+        self.optimizer.apply_gradients(zip(grads, self.model.trainable_weights))
 
 
-class PolicyNet():
-    def __init__(self, contract_tensor, fleet_tensor, input_size, output_size):
+class PolicyNet:
+    def __init__(self, emb, output_size):
 
-        #self.encoding_nn = EncoderModel()
-        num_contracts = contract_tensor.shape[0]
-        num_contract_feats = contract_tensor.shape[1]
-        num_ships = fleet_tensor.shape[0]
-        num_fleet_features = fleet_tensor.shape[1]
+        # self.encoding_nn = EncoderModel()
 
-        contract_input = layers.Input(
-            shape=(None, num_contracts, num_contract_feats), name="contracts")
-        fleet_input = layers.Input(
-            shape=(None, num_ships, num_fleet_features), name="fleet")
-
-        # Encoding part
-        initializer = tf.keras.initializers.GlorotUniform()
-        x = layers.Dense(256, activation="relu", kernel_initializer=initializer,
-                         name="enc_dense_1")(contract_input)
-        x = layers.Dense(64, activation="relu",
-                         kernel_initializer=initializer, name="enc_dense_2")(x)
-        embedding = layers.Dense(
-            32, activation="relu", kernel_initializer=initializer, name="enc_dense_3")(x)
-
-        # TODO concat context tensor with embedding san allo layer
-        # self.decoder = ContextDecoder(input_dim = self.embedding,)
-
-        # ena allo layer context layer pou tha kanei react me to environment kai na pairnw me mask klp ta info pou xreiazomai
-        # na allaksw to call wste na apeikonizetai to reaction me to environment
-
-        # Contracts head
-        # TODO concat fleet with embedding
-        x = layers.Dense(32, activation="relu", kernel_initializer=initializer,
-                         name="contract_dense_1")(embedding)
-        x = layers.Dense(64, activation="relu",
-                         kernel_initializer=initializer, name="contract_dense_2")(x)
-        x = layers.Dense(256, activation="relu",
-                         kernel_initializer=initializer, name="contract_dense_3")(x)
-        contract_output = layers.Dense(
-            output_size, activation="relu", kernel_initializer=initializer, name="contract_output")(x)
-
-        # Speed head
-
-        # TODO concat fleet with embedding
-        x = layers.Dense(32, activation="relu",
-                         kernel_initializer=initializer, name="speed_dense_1")(embedding)
-        x = layers.Dense(64, activation="relu",
-                         kernel_initializer=initializer, name="speed_dense_2")(x)
-        x = layers.Dense(256, activation="relu",
-                         kernel_initializer=initializer, name="speed_dense_3")(x)
-        speed_output = layers.Dense(
-            output_size, activation="relu", kernel_initializer=initializer, name="speed_output")(x)
-
-        # model = keras.Model(inputs=[contract_input, fleet_input],
-        #       outputs =[contract_output, speed_output],
-        #       name="CarbonNetPolicy")
-
-        self.model = keras.Sequential(
-            layers=[
-                keras.Input(shape=(input_size,)),
-                layers.Dense(64, activation="relu", name="relu_layer"),
-                layers.Dense(output_size, activation="linear",
-                             name="linear_layer")
-            ],
-            name="policy")
+        self.model = Carbon_Model(emb, output_size)
 
     def action_distribution(self, observations):
+        # x =
         logits = self.model(observations)
         return tfp.distributions.Categorical(logits=logits)
+        # return 3
 
     def sample_action(self, observations):
-        sampled_actions = self.action_distribution(
-            observations).sample().numpy()
+        sampled_actions = self.action_distribution(observations).sample().numpy()
         return sampled_actions
 
 
