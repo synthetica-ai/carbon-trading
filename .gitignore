@@ -1,5 +1,7 @@
 # Files for git to ignore
 
+environment.yml
+
 code/.pytest_cache
 code/.ipynb_checkpoints
 code/.vscode/*

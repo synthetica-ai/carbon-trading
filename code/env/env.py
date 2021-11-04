@@ -4,7 +4,7 @@ from gym.spaces import Dict, Box, Discrete
 import pandas as pd
 import numpy as np
 import tensorflow as tf
-from utils.utils import cii_expected
+from utils.utils import cii_expected, func_ballast
 
 
 class CarbonEnv(gym.Env):
@@ -15,25 +15,32 @@ class CarbonEnv(gym.Env):
 
     """
 
-    def __init__(self, data_dict={"fleet_path": 'data/fleet_small.csv',
-                                  "ports_path": 'data/ports_10.csv',
-                                  "dm_path": 'data/distance_matrix.csv'}):
+    def __init__(
+        self,
+        data_dict={
+            "fleet_path": "data/fleet_small.csv",
+            "ports_path": "data/ports_10.csv",
+            "dm_path": "data/distance_matrix.csv",
+        },
+    ):
         super().__init__()
+
+        self.day = 1
 
         self.data_dict = data_dict
 
         # get fleet info in df
-        self.fleet = pd.read_csv(self.data_dict['fleet_path'])
+        self.fleet = pd.read_csv(self.data_dict["fleet_path"])
 
         # get port info in df
-        ports = pd.read_csv(self.data_dict['ports_path'])
-        self.ports = ports.loc[:, ['number', 'name', 'country']]
+        ports = pd.read_csv(self.data_dict["ports_path"])
+        self.ports = ports.loc[:, ["number", "name", "country"]]
 
         # get distance matrix info
-        self.dm_df = pd.read_csv(self.data_dict['dm_path'])
+        self.dm_df = pd.read_csv(self.data_dict["dm_path"])
 
         # get distance matrix as tensor
-        self.dm = self.create_tensor_dm()
+        self.dm_tensor = self.create_dm_tensor()
 
         self.NUM_SHIPS = len(self.fleet)
         self.NUM_PORTS = len(self.ports)
@@ -42,12 +49,16 @@ class CarbonEnv(gym.Env):
         self.NUM_SPEEDS = len(self.SET_OF_SPEEDS)
 
         # the observation space changes daily based on the step == 1 day
-        self.observation_space = Dict({
-            "contracts_state": Discrete(self.NUM_DAILY_CONTRACTS),
-            "ships_state": Discrete(self.NUM_SHIPS),
-            "contracts_mask": Box(0, 1, shape=(self.NUM_DAILY_CONTRACTS,), dtype=np.int64),
-            "ships_mask": Box(0, 1, shape=(self.NUM_SHIPS,), dtype=np.int64)
-        })
+        self.observation_space = Dict(
+            {
+                "contracts_tensor_state": Discrete(self.NUM_DAILY_CONTRACTS),
+                "ships_tensor_state": Discrete(self.NUM_SHIPS),
+                "contracts_mask": Box(
+                    0, 1, shape=(self.NUM_DAILY_CONTRACTS,), dtype=np.int64
+                ),
+                "ships_mask": Box(0, 1, shape=(self.NUM_SHIPS,), dtype=np.int64),
+            }
+        )
 
         # The action space should be described in a daily manner as well
         # self.action_space = spaces.Dict({
@@ -58,9 +69,10 @@ class CarbonEnv(gym.Env):
         #     "choose_speed": spaces.Discrete(self.NUM_SPEEDS)
 
         self.action_space = spaces.Discrete(
-            (self.NUM_DAILY_CONTRACTS*self.NUM_SPEEDS)+1)
+            (self.NUM_DAILY_CONTRACTS * self.NUM_SPEEDS) + 1
+        )
 
-        self.reset()
+        # self.reset()
 
     def step(self, action):
         """
@@ -83,7 +95,7 @@ class CarbonEnv(gym.Env):
 
         return state, reward, done
 
-    def reset(self, day=1):
+    def reset(self):
         """
         `reset` sets the environment to its initial state
 
@@ -91,28 +103,36 @@ class CarbonEnv(gym.Env):
         * initial_state : the initial state / observation of the environment.
 
         """
-
+        # initialize the first day
+        self.day = 1
         self.info = {}
         self.done = False
 
         # Set the fleet to its initial state
-        self.fleet = pd.read_csv(self.data_dict['fleet_path'])
+        self.fleet = pd.read_csv(self.data_dict["fleet_path"])
 
         # Calculate fleet's required cii
-        self.fleet['cii_threshold'] = self.fleet['dwt'].map(cii_expected)
+        self.fleet["cii_threshold"] = self.fleet["dwt"].map(cii_expected)
 
         # set fleet at random ports
-        self.fleet['current_port'] = np.random.randint(
-            1, self.NUM_PORTS+1, self.NUM_DAILY_CONTRACTS)
+        self.fleet["current_port"] = np.random.randint(
+            1, self.NUM_PORTS + 1, self.NUM_DAILY_CONTRACTS
+        )
 
         # create a fleet tensor from the fleet df
-        self.fleet_tensor = self.create_tensor_fleet()
+        self.fleet_tensor = self.create_fleet_tensor()
+
+        fleet_before_ballast = self.fleet_tensor
 
         # Create the contracts for the first day of the year
-        self.contracts_tensor = self.create_tensor_contracts(day)
+        self.contracts_df, self.contracts_tensor = self.create_contracts_tensor()
 
         # Add the ballast distances to the fleet tensor
-        self.fleet_tensor = self.find_ballast()
+        self.fleet_tensor = func_ballast(
+            con_tensor=self.contracts_tensor,
+            fleet_tensor=self.fleet_tensor,
+            dm_tensor=self.dm_tensor,
+        )
 
         # An entity showing which daily contract was taken (1) and which was not (0)
         #
@@ -124,10 +144,12 @@ class CarbonEnv(gym.Env):
         # reserve_duration = (balast_distance of that contract + contract_distance) / picked_speed
         self.ship_log = np.zeros(self.NUM_SHIPS)
 
-        self.state = {"contracts": self.contracts_tensor,
-                      "ships": self.fleet_tensor}
+        self.state = {
+            "contracts_state": self.contracts_tensor,
+            "ships_state": self.fleet_tensor,
+        }
 
-        return self.state
+        return fleet_before_ballast, self.state
 
     # def update_intra_statuses(self):
     #     # tha thn ektelw mesa sth loopa gia ka8e ship
@@ -145,63 +167,87 @@ class CarbonEnv(gym.Env):
 
     #     pass
 
-    def create_contracts(self, day=1, seed=None):
+    def create_contracts(self, seed=None):
         """
         `create_contracts` creats cargo contracts for a specific day of the year
         """
-        con_df = pd.DataFrame(columns=['start_port_number', 'end_port_number', 'contract_type',
-                                       'start_day', 'end_day', 'cargo_size', 'contract_duration', 'port_distance', 'value'])
+        con_df = pd.DataFrame(
+            columns=[
+                "start_port_number",
+                "end_port_number",
+                "contract_type",
+                "start_day",
+                "end_day",
+                "cargo_size",
+                "contract_duration",
+                "contract_availability",
+                "port_distance",
+                "value",
+            ]
+        )
 
-        ship_types = np.array(['supramax', 'ultramax', 'panamax', 'kamsarmax'])
+        ship_types = np.array(["supramax", "ultramax", "panamax", "kamsarmax"])
 
-        con_df['start_port_number'] = np.random.randint(
-            1, self.NUM_PORTS+1, size=self.NUM_DAILY_CONTRACTS)
-        con_df['contract_type'] = np.random.choice(
-            ship_types, size=self.NUM_DAILY_CONTRACTS)
-        con_df['end_port_number'] = np.random.randint(
-            1, self.NUM_PORTS+1, size=self.NUM_DAILY_CONTRACTS)
+        con_df["start_port_number"] = np.random.randint(
+            1, self.NUM_PORTS + 1, size=self.NUM_DAILY_CONTRACTS
+        )
+        con_df["contract_type"] = np.random.choice(
+            ship_types, size=self.NUM_DAILY_CONTRACTS
+        )
+        con_df["end_port_number"] = np.random.randint(
+            1, self.NUM_PORTS + 1, size=self.NUM_DAILY_CONTRACTS
+        )
 
-        same_ports = con_df['start_port_number'] == con_df['end_port_number']
+        same_ports = con_df["start_port_number"] == con_df["end_port_number"]
         # check that start and end ports are different
         while sum(same_ports) != 0:
-            con_df['end_port_number'] = np.where(same_ports, np.random.randint(
-                low=1, high=self.NUM_PORTS+1, size=same_ports.shape), con_df['end_port_number'])
-            same_ports = con_df['start_port_number'] == con_df['end_port_number']
+            con_df["end_port_number"] = np.where(
+                same_ports,
+                np.random.randint(
+                    low=1, high=self.NUM_PORTS + 1, size=same_ports.shape
+                ),
+                con_df["end_port_number"],
+            )
+            same_ports = con_df["start_port_number"] == con_df["end_port_number"]
 
-        con_df['start_day'] = day
+        con_df["start_day"] = self.day
 
         # get distance between start and end ports arrays
-        start_port_numbers_index = con_df['start_port_number'] - 1
-        end_port_numbers_index = con_df['end_port_number']
+        start_port_numbers_index = con_df["start_port_number"] - 1
+        end_port_numbers_index = con_df["end_port_number"]
 
-        dist_df = self.dm_df.iloc[start_port_numbers_index,
-                                  end_port_numbers_index]
+        dist_df = self.dm_df.iloc[start_port_numbers_index, end_port_numbers_index]
 
         # the distance
-        con_df['port_distance'] = pd.Series(np.diag(dist_df)).reindex()
+        con_df["port_distance"] = pd.Series(np.diag(dist_df)).reindex()
 
         # Create cargo size based on ship_type
-        type_conditions = [con_df['contract_type'] == 'supramax',
-                           con_df['contract_type'] == 'ultramax',
-                           con_df['contract_type'] == 'panamax',
-                           con_df['contract_type'] == 'kamsarmax']
+        type_conditions = [
+            con_df["contract_type"] == "supramax",
+            con_df["contract_type"] == "ultramax",
+            con_df["contract_type"] == "panamax",
+            con_df["contract_type"] == "kamsarmax",
+        ]
 
-        cargo_size_choices = [np.random.randint(40_000, 50_000, type_conditions[0].shape),
-                              np.random.randint(
-                                  50_000, 60_000, type_conditions[1].shape),
-                              np.random.randint(
-                                  60_000, 70_000, type_conditions[2].shape),
-                              np.random.randint(70_000, 80_000, type_conditions[3].shape)]
+        cargo_size_choices = [
+            np.random.randint(40_000, 50_000, type_conditions[0].shape),
+            np.random.randint(50_000, 60_000, type_conditions[1].shape),
+            np.random.randint(60_000, 70_000, type_conditions[2].shape),
+            np.random.randint(70_000, 80_000, type_conditions[3].shape),
+        ]
 
-        con_df['cargo_size'] = np.select(type_conditions, cargo_size_choices)
+        con_df["cargo_size"] = np.select(type_conditions, cargo_size_choices)
 
-        ship_type_to_ship_code_choices = [np.ones(shape=type_conditions[0].shape),
-                                          2*np.ones(shape=type_conditions[1].shape),
-                                          3*np.ones(shape=type_conditions[2].shape),
-                                          4*np.ones(shape=type_conditions[3].shape)]
+        ship_type_to_ship_code_choices = [
+            np.ones(shape=type_conditions[0].shape),
+            2 * np.ones(shape=type_conditions[1].shape),
+            3 * np.ones(shape=type_conditions[2].shape),
+            4 * np.ones(shape=type_conditions[3].shape),
+        ]
 
-        con_df['contract_type'] = np.select(
-            type_conditions, ship_type_to_ship_code_choices)
+        con_df["contract_type"] = np.select(
+            type_conditions, ship_type_to_ship_code_choices
+        )
 
         # calculate duration
 
@@ -209,7 +255,7 @@ class CarbonEnv(gym.Env):
         u_picked = np.random.choice([10, 12, 14])
 
         # pick distance between ports from df
-        dx = con_df['port_distance']
+        dx = con_df["port_distance"]
         # find duration of trip between ports with picked speed in hours
         dt_hours = (dx / u_picked).round()
         # find duration of trip between ports in days
@@ -222,35 +268,49 @@ class CarbonEnv(gym.Env):
         # average voyage distance between ports in the distance matrix
         avg_dx = np.round(triu.mean())
         # average voyage duration between ports with picked speed in hours
-        avg_dt_hours = np.round(avg_dx/u_picked)
+        avg_dt_hours = np.round(avg_dx / u_picked)
         # # average voyage duration between ports with picked speed in days
         avg_dt_days = np.round(avg_dt_hours / 24)
 
         # total duration
 
-        con_df['contract_duration'] = dt_days + avg_dt_days
+        con_df["contract_duration"] = dt_days + avg_dt_days
 
         # end_day ends at 23:59
-        con_df['end_day'] = con_df['start_day'] + \
-            con_df['contract_duration'] - 1
+        con_df["end_day"] = con_df["start_day"] + con_df["contract_duration"] - 1
 
         # add contract value
-        con_df['value'] = round(
-            con_df['cargo_size'] * (con_df['port_distance'] / (con_df['contract_duration'] * 1_000_000)))
+        con_df["value"] = round(
+            con_df["cargo_size"]
+            * (con_df["port_distance"] / (con_df["contract_duration"] * 1_000_000))
+        )
+
+        # set contract availability to 1 for each contract
+        con_df["contract_availability"] = np.ones(shape=(self.NUM_DAILY_CONTRACTS))
 
         return con_df
 
-    def create_tensor_contracts(self, day):
+    def create_contracts_tensor(self):
         """
-        `create_tensor_contracts` creates a tensor out of the contracts dataframe
+        `create_contracts_tensor` creates a tensor out of the contracts dataframe
         """
-        empty = pd.DataFrame(columns=['start_port_number', 'end_port_number', 'contract_type',
-                             'start_day', 'end_day', 'cargo_size', 'contract_duration', 'port_distance', 'value'])
+        empty = pd.DataFrame(
+            columns=[
+                "start_port_number",
+                "end_port_number",
+                "contract_type",
+                "start_day",
+                "end_day",
+                "cargo_size",
+                "contract_duration",
+                "contract_availability",
+                "port_distance",
+                "value",
+            ]
+        )
         contracts_df = empty.copy()
-        x = self.create_contracts(day)
+        x = self.create_contracts()
         contracts_df = contracts_df.append(x, ignore_index=True)
-
-        print(contracts_df)
 
         # convert everything to float for tensorflow compatibility
         contracts_df = contracts_df.astype(np.float32)
@@ -261,21 +321,31 @@ class CarbonEnv(gym.Env):
         # add a batch size dimension
         contracts_tensor = tf.expand_dims(contracts_tensor, axis=0)
 
-        return contracts_tensor
+        return contracts_df, contracts_tensor
 
-    def create_tensor_fleet(self):
+    def create_fleet_tensor(self):
         """
-        `create_tensor_fleet` creates a tensor out of the fleets dataframe
+        `create_fleet_tensor` creates a tensor out of the fleets dataframe
         """
         # keeping only these features from the fleet df
-        cols_to_keep = ['ship_number', 'dwt', 'cii_threshold', 'cii',
-                        'current_port', 'current_speed', 'ship_availability', 'ballast_1', 'ballast_2', 'ballast_3', 'ballast_4']
+        cols_to_keep = [
+            "ship_number",
+            "dwt",
+            "cii_threshold",
+            "cii_attained",
+            "current_port",
+            "current_speed",
+            "ship_availability",
+            "ballast_1",
+            "ballast_2",
+            "ballast_3",
+            "ballast_4",
+        ]
 
         self.fleet = self.fleet[cols_to_keep]
 
         df = self.fleet
 
-        print(df)
         # converting to float for tensorflow compatibility
         df = df.astype(np.float32)
 
@@ -287,9 +357,9 @@ class CarbonEnv(gym.Env):
 
         return tensor
 
-    def create_tensor_dm(self):
+    def create_dm_tensor(self):
         """
-        `create_tensor_dm` produces a tf tensor out of the distance matrix dataframe
+        `create_dm_tensor` produces a tf tensor out of the distance matrix dataframe
         Args :
         * dm_df : A dataframe containing the distance matrix data
         """
@@ -307,56 +377,7 @@ class CarbonEnv(gym.Env):
         * port_2_number : number of port 2
         """
         dist_m = self.dm
-        idx_1 = port_1_number-1
-        idx_2 = port_2_number-1
+        idx_1 = port_1_number - 1
+        idx_2 = port_2_number - 1
         distance = dist_m[idx_1, idx_2]
         return distance
-
-    def find_ballast(self, num_contracts=4, num_ballasts=4):
-        """
-        `find_ballast` finds the ballast trips of fleet vessels for the new contracts
-        """
-        contracts = self.contracts_tensor
-        fleet = self.fleet_tensor
-
-        distance_matrix = self.dm.numpy()
-
-        # using -1 to get the port indeces
-
-        # start_port idxs
-        sp_idx = contracts[:, :, 0] - 1
-        sp_idx = tf.concat([sp_idx]*4, axis=0)
-
-        # current_port idxs
-        cp_idx = fleet[:, :, 4] - 1
-        cp_idx = tf.transpose(tf.concat([cp_idx]*4, axis=0))
-
-        # get row index
-        row_idx = cp_idx[:, 1].numpy().astype(int)
-
-        # get column index
-        col_idx = sp_idx[0].numpy().astype(int)
-
-        # get ballast data from distance matrix
-        bd = distance_matrix[np.ix_(row_idx, col_idx)]
-
-        # convert back to tf
-        bd = tf.convert_to_tensor(bd)
-
-        # duplicate bd appropriately so that dimensions are appropriate for the mask used later
-        bd = tf.concat([bd]*3, axis=1)
-
-        # casting to float and removing unwanted first column with slicing so that the dimensions align properly
-        bd = tf.cast(bd[:, 1:], dtype=float)
-
-        # creating an array of ones and zeros for the mask
-        oz_array = tf.concat([tf.ones([num_contracts, 7]), tf.zeros(
-            [num_contracts, num_ballasts])], axis=1)
-
-        # casting the oz_array to boolean to create the boolean mask
-        mask = tf.cast(oz_array, dtype='bool')
-
-        # populating the fleet tensor with ballast data for each contract
-        fleet_with_ballast = tf.where(mask, fleet, bd)
-
-        return fleet_with_ballast
