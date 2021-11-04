@@ -114,16 +114,16 @@ def func_ballast(con_tensor, fleet_tensor, dm_tensor):
     dm = dm_tensor.numpy()
     # start_port idxs
     sp_idx = con_tensor[:, :, 0] - 1
-    col_idx = sp_idx.numpy().astype(int)
-    col_idx = col_idx[0]
+    cols_idx = sp_idx.numpy().astype(int)
+    cols_idx = cols_idx[0]
 
     # current_port idxs
     cp_idx = fleet_tensor[:, :, 4] - 1
-    row_idx = cp_idx.numpy().astype(int)
-    row_idx = row_idx[0]
+    rows_idx = cp_idx.numpy().astype(int)
+    rows_idx = rows_idx[0]
 
     # get ballast data from distance matrix
-    bd = dm[np.ix_(row_idx, col_idx)]
+    bd = dm[np.ix_(rows_idx, cols_idx)]
     # convert to tf tensor
     bd = tf.convert_to_tensor(bd)
     # extend the ballast data
