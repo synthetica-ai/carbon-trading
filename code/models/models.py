@@ -1,6 +1,6 @@
 import tensorflow as tf
-
 import tensorflow_probability as tfp
+
 import numpy as np
 from env.env import CarbonEnv
 import numpy as np
@@ -12,26 +12,43 @@ import numpy as np
 # from data.data_functions import baseline_input_fn
 
 
-class Carbon_Model2(tf.keras.Model):  # TODO bug is here
-    def __init__(self, emb_dim, output_size):
+class CarbonModel(tf.keras.Model):
+    """
+    `CarbonModel` class used in PolicyNet and BaselineNet.
+    Creates an embedding of the `contracts_tensor` and combines it
+    with fleet information from the `fleet_tensor` to output a final `context_embedding`.
+
+    Functionality:
+    takes `contracts_tensor`, `fleet_tensor` as inputs and outputs `context_tensor`
+
+    Takes inputs:
+    * `fleet_tensor`
+    * `contracts_tensor`
+
+    Outputs:
+
+    * `context_tensor`
+
+    """  # TODO bug is here
+    def __init__(self, embedding_size, output_context_size):
 
         super().__init__()
 
-        #         self.contract_input = layers.Input(shape=36, name="contracts")
+        self.contract_input = tf.keras.layers.Input(shape=(num_contract,num, name="contracts")
 
-        self.emb_dim = emb_dim
-        self.output_size = output_size
+        self.emb_size = size_of_embedding
+        self.output_size = size_of_output
 
         self.dense1 = tf.keras.layers.Dense(256, activation="relu")
         self.dense2 = tf.keras.layers.Dense(64, activation="relu")
-        self.embedding = tf.keras.layers.Dense(self.emb_dim)
+        self.embedding = tf.keras.layers.Dense(self.emb_dim ,activation="relu")
 
         self.dense_context = tf.keras.layers.Dense(256, activation="relu")
         self.dense_out = tf.keras.layers.Dense(self.output_size, activation="linear")
 
     def call(self, contract_tensor, fleet_tensor):
 
-        #         fleet_input = layers.Input(shape=(IMG_SIZE, IMG_SIZE, 3), name="fleet")
+        #fleet_input = layers.Input(shape=(IMG_SIZE, IMG_SIZE, 3), name="fleet")
 
         # Encoding part
         x = self.dense1(contract_tensor)
@@ -44,45 +61,15 @@ class Carbon_Model2(tf.keras.Model):  # TODO bug is here
         return logits
 
 
-class Carbon_Model(tf.keras.Model):  # TODO bug is here
-    def __init__(self, emb_dim, output_size):
-
-        super().__init__()
-
-        #         self.contract_input = layers.Input(shape=36, name="contracts")
-
-        self.emb_dim = emb_dim
-        self.output_size = output_size
-
-        self.dense1 = tf.keras.layers.Dense(256, activation="relu")
-        self.dense2 = tf.keras.layers.Dense(64, activation="relu")
-        self.embedding = tf.keras.layers.Dense(self.emb_dim)
-
-        self.dense_context = tf.keras.layers.Dense(256, activation="relu")
-        self.dense_out = tf.keras.layers.Dense(self.output_size, activation="linear")
-
-    def call(self, contract_tensor, fleet_tensor):
-
-        #         fleet_input = layers.Input(shape=(IMG_SIZE, IMG_SIZE, 3), name="fleet")
-
-        # Encoding part
-        x = self.dense1(contract_tensor)
-        x = self.dense2(x)
-        embedding = self.embedding(x)
-
-        context = tf.concat([embedding, fleet_tensor], 1)
-        context = self.dense_in(context)
-        logits = self.dense_out(context)
-        return logits
 
 
 # Code version 1
 
 # Baseline Model
 class BaselineNet:
-    def __init__(self, emb, output_size):
+    def __init__(self, size_of_embedding, size_of_output ):
 
-        self.model = Carbon_Model2(emb, output_size)
+        self.model = Carbon_Model(size_of_embedding, size_of_output)
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=3e-2)
 
     def forward(self, observations):
@@ -98,39 +85,38 @@ class BaselineNet:
 
 
 class PolicyNet:
-    def __init__(self, emb, output_size):
+    def __init__(self, size_of_embedding, size_of_output=#size_of_action_space):
 
         # self.encoding_nn = EncoderModel()
 
-        self.model = Carbon_Model(emb, output_size)
+        self.model = Carbon_Model(size_of_embedding, size_of_output)
 
     def action_distribution(self, observations):
         # x =
         logits = self.model(observations)
         return tfp.distributions.Categorical(logits=logits)
-        # return 3
 
     def sample_action(self, observations):
         sampled_actions = self.action_distribution(observations).sample().numpy()
         return sampled_actions
 
 
-class Encoder_Decoder(tf.keras.Model):
-    def __init__(self, emb_dim, output_size):
+# class Encoder_Decoder(tf.keras.Model):
+#     def __init__(self, emb_dim, output_size):
 
-        super().__init__()
-        self.emb_dim = emb_dim
-        self.output_size = output_size
-        self.encoder = ContractEncoder(emb_dim=self.emb_dim)
+#         super().__init__()
+#         self.emb_dim = emb_dim
+#         self.output_size = output_size
+#         self.encoder = ContractEncoder(emb_dim=self.emb_dim)
 
-        self.decoder = ShipDecoder(output_size=self.output_size)
+#         self.decoder = ShipDecoder(output_size=self.output_size)
 
-    def call(self, contract_input, ship_input):
-        embeddings = self.encoder(contract_input)
+#     def call(self, contract_input, ship_input):
+#         embeddings = self.encoder(contract_input)
 
-        logits = self.decoder(embeddings, ship_input)
+#         logits = self.decoder(embeddings, ship_input)
 
-        return logits
+#         return logits
 
 
 # Code version 2

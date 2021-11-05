@@ -1,9 +1,9 @@
 import gym
 from gym import spaces
-from gym.spaces import Dict, Box, Discrete
 import pandas as pd
 import numpy as np
 import tensorflow as tf
+from tensorflow.python.framework.ops import Tensor
 from utils.utils import cii_expected, func_ballast
 
 
@@ -47,32 +47,34 @@ class CarbonEnv(gym.Env):
         self.NUM_DAILY_CONTRACTS = 4
         self.SET_OF_SPEEDS = [10, 12, 14]
         self.NUM_SPEEDS = len(self.SET_OF_SPEEDS)
-
-        # the observation space changes daily based on the step == 1 day
-        self.observation_space = Dict(
-            {
-                "contracts_tensor_state": Discrete(self.NUM_DAILY_CONTRACTS),
-                "ships_tensor_state": Discrete(self.NUM_SHIPS),
-                "contracts_mask": Box(
-                    0, 1, shape=(self.NUM_DAILY_CONTRACTS,), dtype=np.int64
-                ),
-                "ships_mask": Box(0, 1, shape=(self.NUM_SHIPS,), dtype=np.int64),
-            }
-        )
-
-        # The action space should be described in a daily manner as well
-        # self.action_space = spaces.Dict({
-        #     # we loop over the ships for the contracts of the day specified by the step
-        #     # the actions we can take for each ship are:
-        #     #"choose_contract": spaces.Discrete(self.NUM_DAILY_CONTRACTS+1),
-        #     "choose_contract" : spaces.Discrete((self.NUM_DAILY_CONTRACTS*self.NUM_SPEEDS)+1), # choose a contract or not
-        #     "choose_speed": spaces.Discrete(self.NUM_SPEEDS)
-
-        self.action_space = spaces.Discrete(
-            (self.NUM_DAILY_CONTRACTS * self.NUM_SPEEDS) + 1
-        )
-
-        # self.reset()
+        self.NUM_CONTRACT_FEATURES = 10
+        self.NUM_SHIP_FEATURES = 11
+        self.batch_size = 32
+        self.observation_space = {
+            "contracts_state": tf.zeros(
+                shape=(
+                    self.batch_size,
+                    self.NUM_DAILY_CONTRACTS,
+                    self.NUM_CONTRACT_FEATURES,
+                )
+            ),
+            "ships_state": tf.zeros(
+                shape=(self.batch_size, self.NUM_SHIPS, self.NUM_SHIP_FEATURES)
+            ),
+            "contracts_mask": tf.zeros(
+                shape=(self.batch_size, self.NUM_DAILY_CONTRACTS)
+            ),
+            "ships_mask": tf.zeros(shape=(self.batch_size, self.NUM_SHIPS)),
+        }
+        self.action_space = {
+            "action": tf.zeros(
+                shape=(
+                    self.batch_size,
+                    (self.NUM_DAILY_CONTRACTS * self.NUM_SPEEDS) + 1,
+                )
+            )
+        }
+        self.reset()
 
     def step(self, action):
         """
@@ -103,8 +105,8 @@ class CarbonEnv(gym.Env):
         * initial_state : the initial state / observation of the environment.
 
         """
-        # initialize the first day
-        self.day = 1
+
+        self.day = 0
         self.info = {}
         self.done = False
 
@@ -134,22 +136,26 @@ class CarbonEnv(gym.Env):
             dm_tensor=self.dm_tensor,
         )
 
-        # An entity showing which daily contract was taken (1) and which was not (0)
-        #
-        #
-        self.daily_contract_log = np.zeros(self.NUM_DAILY_CONTRACTS)
+        # An entity showing which daily contracts were taken (1) and which were not (0)
+        self.contracts_mask = tf.zeros(
+            shape=(self.batch_size, self.NUM_DAILY_CONTRACTS)
+        )
 
-        # similar entity for ship
-        # should stay 1 for as long as this ship is reserved
+        # An entity showing for how many days each ship is to be reserved
         # reserve_duration = (balast_distance of that contract + contract_distance) / picked_speed
-        self.ship_log = np.zeros(self.NUM_SHIPS)
+        self.ship_log = np.zeros(shape=(self.batch_size, self.NUM_SHIPS))
+
+        # should stay 1 for as long as this ship is reserved
+        self.ships_mask = tf.zeros(shape=(self.batch_size, self.NUM_SHIPS))
 
         self.state = {
             "contracts_state": self.contracts_tensor,
             "ships_state": self.fleet_tensor,
+            "contracts_mask": self.contracts_mask,
+            "ships_mask": self.ships_mask,
         }
 
-        return fleet_before_ballast, self.state
+        return self.state
 
     # def update_intra_statuses(self):
     #     # tha thn ektelw mesa sth loopa gia ka8e ship
@@ -181,7 +187,7 @@ class CarbonEnv(gym.Env):
                 "cargo_size",
                 "contract_duration",
                 "contract_availability",
-                "port_distance",
+                "contract_distance",
                 "value",
             ]
         )
@@ -219,7 +225,7 @@ class CarbonEnv(gym.Env):
         dist_df = self.dm_df.iloc[start_port_numbers_index, end_port_numbers_index]
 
         # the distance
-        con_df["port_distance"] = pd.Series(np.diag(dist_df)).reindex()
+        con_df["contract_distance"] = pd.Series(np.diag(dist_df)).reindex()
 
         # Create cargo size based on ship_type
         type_conditions = [
@@ -255,7 +261,7 @@ class CarbonEnv(gym.Env):
         u_picked = np.random.choice([10, 12, 14])
 
         # pick distance between ports from df
-        dx = con_df["port_distance"]
+        dx = con_df["contract_distance"]
         # find duration of trip between ports with picked speed in hours
         dt_hours = (dx / u_picked).round()
         # find duration of trip between ports in days
@@ -282,7 +288,7 @@ class CarbonEnv(gym.Env):
         # add contract value
         con_df["value"] = round(
             con_df["cargo_size"]
-            * (con_df["port_distance"] / (con_df["contract_duration"] * 1_000_000))
+            * (con_df["contract_distance"] / (con_df["contract_duration"] * 1_000_000))
         )
 
         # set contract availability to 1 for each contract
@@ -304,7 +310,7 @@ class CarbonEnv(gym.Env):
                 "cargo_size",
                 "contract_duration",
                 "contract_availability",
-                "port_distance",
+                "contract_distance",
                 "value",
             ]
         )

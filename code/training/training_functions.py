@@ -13,17 +13,24 @@ from shutil import copyfile
 
 from data.data_functions import train_input_fn
 from env.env import CarbonEnv
-from models.models import set_decode_type, validate, model_skeleton, BaselineNet, PolicyNet
+from models.models import BaselineNet, PolicyNet
 
 
 class PolicyGradient(object):
-    def __init__(self, env, num_iterations=2, batch_size=2000, max_ep_len=365*4, output_path="../results/"):
+    def __init__(
+        self,
+        env,
+        num_iterations=2,
+        batch_size=2000,
+        max_ep_len=365 * 4,
+        output_path="../results/",
+    ):
         self.output_path = output_path
         if not exists(output_path):
             makedirs(output_path)
         self.env = env
         # dhlwsh input
-        #self.observation_dim = self.env.observation_space.shape[0]
+        # self.observation_dim = self.env.observation_space.shape[0]
         self.action_dim = self.env.action_space.n
         self.gamma = 0.99
         self.num_iterations = num_iterations
@@ -41,7 +48,7 @@ class PolicyGradient(object):
         if not env:
             env = self.env
 
-        while (num_episodes or t < self.batch_size):
+        while num_episodes or t < self.batch_size:
             state = env.reset()
             states, actions, rewards = [], [], []
             episode_reward = 0
@@ -56,15 +63,17 @@ class PolicyGradient(object):
                 episode_reward += reward
                 t += 1
 
-                if (done or step == self.max_ep_len-1):
+                if done or step == self.max_ep_len - 1:
                     episode_rewards.append(episode_reward)
                     break
                 if (not num_episodes) and t == self.batch_size:
                     break
 
-            path = {"observation": np.array(states),
-                    "reward": np.array(rewards),
-                    "action": np.array(actions)}
+            path = {
+                "observation": np.array(states),
+                "reward": np.array(rewards),
+                "action": np.array(actions),
+            }
             paths.append(path)
             episode += 1
             if num_episodes and episode >= num_episodes:
@@ -79,7 +88,7 @@ class PolicyGradient(object):
             reversed_rewards = np.flip(rewards, 0)
             g_t = 0
             for r in reversed_rewards:
-                g_t = r + self.gamma*g_t
+                g_t = r + self.gamma * g_t
                 returns.insert(0, g_t)
             all_returns.append(returns)
         returns = np.concatenate(all_returns)
@@ -88,8 +97,9 @@ class PolicyGradient(object):
     def get_advantage(self, returns, observations):
         values = self.baseline_net.forward(observations).numpy()
         advantages = returns - values
-        advantages = (advantages-np.mean(advantages)) / \
-            np.sqrt(np.sum(advantages**2))
+        advantages = (advantages - np.mean(advantages)) / np.sqrt(
+            np.sum(advantages ** 2)
+        )
         return advantages
 
     def update_policy(self, observations, actions, advantages):
@@ -97,13 +107,14 @@ class PolicyGradient(object):
         actions = tf.convert_to_tensor(actions)
         advantages = tf.convert_to_tensor(advantages)
         with tf.GradientTape() as tape:
-            log_prob = self.policy_net.action_distribution(
-                observations).log_prob(actions)
-            loss = -tf.math.reduce_mean(log_prob *
-                                        tf.cast(advantages, tf.float32))
+            log_prob = self.policy_net.action_distribution(observations).log_prob(
+                actions
+            )
+            loss = -tf.math.reduce_mean(log_prob * tf.cast(advantages, tf.float32))
         grads = tape.gradient(loss, self.policy_net.model.trainable_weights)
         self.optimizer.apply_gradients(
-            zip(grads, self.policy_net.model.trainable_weights))
+            zip(grads, self.policy_net.model.trainable_weights)
+        )
 
     def train(self):
         all_total_rewards = []
@@ -111,8 +122,7 @@ class PolicyGradient(object):
         for t in range(self.num_iterations):
             paths, total_rewards = self.play_games()
             all_total_rewards.extend(total_rewards)
-            observations = np.concatenate(
-                [path["observation"] for path in paths])
+            observations = np.concatenate([path["observation"] for path in paths])
             actions = np.concatenate([path["action"] for path in paths])
             returns = self.get_returns(paths)
             advantages = self.get_advantage(returns, observations)
@@ -123,17 +133,12 @@ class PolicyGradient(object):
             print("Average reward for batch {}: {:04.2f}".format(t, avg_reward))
         print("Training complete")
         np.save(self.output_path + "rewards.npy", averaged_total_rewards)
-        # export_plot(averaged_total_rewards, "Reward", "CartPole-v0", self.output_path + "rewards.png")
 
     def eval(self, env, num_episodes=1):
         paths, rewards = self.play_games(env, num_episodes)
         avg_reward = np.mean(rewards)
         print("Average eval reward: {:04.2f}".format(avg_reward))
         return avg_reward
-
-    def make_video(self):
-        env = wrappers.Monitor(self.env, self.output_path+"videos", force=True)
-        self.eval(env=env, num_episodes=1)
 
 
 # ##
