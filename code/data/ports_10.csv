@@ -1,0 +1,11 @@
+number,name,country,region,code,position,latitude,longitude,location
+1,Shanghai,China,East Asia,CNSHA,"31° 15.500' N, 121° 32.600' E",31.258333,121.543333,Yangtze Delta
+2,Singapore,Singapore,Southeast Asia,SGSIN,"1° 15.500' N, 103° 47.900' E",1.25833,103.798333,Singapore Strait
+3,Xiamen,China,East Asia,CNXMN,"24° 27.100' N, 118° 4.300' E",24.45167,118.071667,Taiwan Strait
+4,Dalian,China,East Asia,CNDLC,"38° 56.300' N, 121° 39.500' E",38.93833,121.658333,Yellow Sea
+5,Guangzhou,China,East Asia,CNCAN,"23° 3.900' N, 113° 25.150' E",23.06500,113.419167,Pearl River Delta
+6,Qingdao,China,East Asia,CNTAO,"36° 5.650' N, 120° 19.000' E",36.09417,120.316667,Yellow Sea
+7,Busan,South Korea,East Asia,KRPUS,"35° 6.500' N, 129° 3.500' E",35.10833,129.058333,Korean Strait
+8,Hong Kong,Hong Kong,East Asia,HKHKG,"22° 17.400' N, 114° 10.100' E",22.29000,114.168333,Pearl River Delta
+9,Tianjin,China,East Asia,CNTXG,"38° 58.400' N, 117° 46.300' E",38.97333,117.771667,Yellow Sea
+10,Kaohsiung,Taiwan,East Asia,TWKHH,"22° 34.800' N, 120° 18.000' E",22.58000,120.300000,Taiwan Strait
