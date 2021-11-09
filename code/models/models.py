@@ -92,41 +92,46 @@ class CarbonModel(tf.keras.Model):
         # reduce the context to get a 13,1 logits vector instead of 4,13
         # context = tf.math.reduce_mean(context, axis=0)
         # context = tf.expand_dims(context, axis=0)
-        print(f"To shape tou context einai {context.shape}")
+        # print(f"To shape tou context einai {context.shape}")
         logits = self.output_layer(context)
         # reduce the logits with the mean to get a 13,1 vector anti gia 4,13
         logits = tf.math.reduce_mean(logits, axis=0)
         logits = tf.expand_dims(logits, axis=1)
 
-        print(f"To shape twn logits prepei na einai 13 kai einai {logits.shape}")
+        # print(f"To shape twn logits prepei na einai (13, 1) kai einai {logits.shape}")
 
         if self.policynet_flag:
 
             # an exw dialeksh to policynet bale maska
             # opou h maska twn contracts einai 0 bale -np.Infinity
             # h actions_boolean_mask exei dimension
-            print("bhka sto if")
+            # print("bhka sto if")
+            # print("wra na tsekarw tis boolean masks")
             contracts_bm = tf.equal(self.contracts_mask, 0)
-            print(f"to boolean mask tou contracts einai {contracts_bm}")
-            print(f"to shape tou boolean mask einai {contracts_bm.shape}")
+            # print(f"to contracts bm einai {contracts_bm}")
+            # print(f"to shape tou contracts bm einai {contracts_bm.shape}")
             actions_bm = tf.where(contracts_bm, tf.repeat(tf.constant(False), 3), tf.repeat(tf.constant(True), 3))
-            print(f"to boolean mask tou actions einai {actions_bm}")
+            # print(f"to actions bm einai {actions_bm}")
+            # print(f"to shape tou actions bm einai {actions_bm.shape}")
             actions_bm = tf.reshape(actions_bm, [-1])
-            print(f"ekana flatten thn bm tou actions")
-            print(f"to boolean mask tou actions twra einai {actions_bm}")
+            # print(f"ekana flatten thn bm tou actions")
+            # print(f"to actions bm einai {actions_bm}")
+            # print(f"to shape tou actions bm einai {actions_bm.shape}")
+
             actions_bm = tf.expand_dims(actions_bm, axis=1)
-            print(f"ebala mia akoma diastash sthn bm tou actions")
-            print(f"to boolean mask tou actions twra einai {actions_bm}")
+            # print(f"ebala mia akoma diastash sthn bm tou actions")
+            # print(f"to actions bm einai {actions_bm}")
+            # print(f"to shape tou actions bm einai {actions_bm.shape}")
             # bazw ena teleutaio true gia to 13 action tou select nothing
             actions_bm = tf.concat((actions_bm, tf.constant(True, shape=(1, 1))), axis=0)
-            print(f"ebala ena teleutaio true sth bm tou actions")
-            print(f"to boolean mask tou actions twra einai {actions_bm}")
-            print(f"to boolean mask tou actions twra exei shape {actions_bm.shape}")
+            # print(f"ebala ena teleutaio true sth bm tou actions")
+            # print(f"to actions bm einai {actions_bm}")
+            # print(f"to shape tou actions bm einai {actions_bm.shape}")
 
-            logits = tf.where(actions_bm, float("-inf"), logits)
-            print(f"ta logits einai {logits}")
-            if logits.shape.as_list() == [13, 1]:
-                print(f"Success epitelous ta logits einai {logits.shape}")
+            logits = tf.where(actions_bm, logits, float("-inf"))
+            # print(f"ta logits einai {logits}")
+            # if logits.shape.as_list() == [13, 1]:
+            #     print(f"Success epitelous ta logits einai {logits.shape}")
 
         return logits
 
@@ -178,7 +183,10 @@ class PolicyNet(object):
 
     def action_distribution(self, state_dict):
         logits = self.policy_model(state_dict)
-        return logits, tfp.distributions.Categorical(logits=logits)
+        # squeeze logits before they get in the categorical
+        # auto prepei na ginei gia na parw 1 sample apo thn Categorical kai oxi batches twn 13
+        logits = tf.squeeze(logits)
+        return tfp.distributions.Categorical(logits=logits)
 
     def sample_action(self, state_dict):
         sampled_actions = self.action_distribution(state_dict).sample().numpy()
