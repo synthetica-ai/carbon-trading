@@ -15,11 +15,30 @@ def cii_expected(dwt, year=2023):
     return cii_required
 
 
-def cii_attained(dwt, distance_sailed, co2_emissions):
+def cii_attained(ship, speed, total_distance):
     """
-    a function calculating the annual attained cii of a vessel
+    `cii_attained` calculates the attained cii of a vessel
     """
-    cii_attained = (co2_emissions * 1_000_000) / (dwt * distance_sailed)
+
+    speed_factors_dict_per_ship_type = {
+        1: (50_000, 0.00085034, 0.15646258),
+        2: (60_000, 0.00757758, 0.03166888),
+        3: (70_000, 0.00735917, 0.08172108),
+        4: (80_000, 0.00735917, 0.08172108),
+    }
+    # dwt
+    dwt = speed_factors_dict_per_ship_type[ship][0]
+
+    # the factor of speed^3
+    c3_speed_factor = speed_factors_dict_per_ship_type[ship][1]
+
+    # the factor of speed^2
+    c2_speed_factor = speed_factors_dict_per_ship_type[ship][2]
+
+    # co2 emissions from speed formula
+    co2_emissions = c3_speed_factor * (speed ** 3) + c2_speed_factor * (speed ** 2)
+
+    cii_attained = (co2_emissions * 1_000_000) / (dwt * total_distance)
     return cii_attained
 
 
@@ -169,3 +188,4 @@ def map_action(selection):
         # print(f"The selected speed is {selected_speed} knots")
         # print("")
     return selected_contract, selected_speed
+

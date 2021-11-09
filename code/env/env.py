@@ -1,10 +1,11 @@
+from typing_extensions import ParamSpecKwargs
 import gym
 from gym import spaces
 import pandas as pd
 import numpy as np
 import tensorflow as tf
 from tensorflow.python.framework.ops import Tensor
-from utils.utils import cii_expected, func_ballast
+from utils.utils import cii_expected, func_ballast, map_action
 
 
 class CarbonEnv(gym.Env):
@@ -72,7 +73,7 @@ class CarbonEnv(gym.Env):
         self.embedding_size = 128
         self.reset()
 
-    def step(self, action):
+    def step(self, action, ship_number):
         """
         `step` takes a step into the environment
 
@@ -82,16 +83,33 @@ class CarbonEnv(gym.Env):
         * done: A flag signaling if the game ended
         * info : A dict useful for debugging
         """
+        ### Prosoxh!!!!
+        # to ship_number einai [1,2,3,4] den ksekinaei apo to 0!
+        # edw aferw apo to ship_number to 1 gia na parw to epi8umhto ship index
+        ship_indx = ship_number - 1
 
-        # prepei na kanw to step gia ka8e ship
+        # an to action einai to 12 dhladh mhn pareis contract tote
 
-        state, reward, done = self.state, 1, False
+        # mapare to action se contract kai speed
+        contract, speed = map_action(action)
 
-        # state = self.contracts_tensor
+        print(f"The contract is contract_{contract} and the speed for ship {ship_number} is {speed} knots")
 
-        # reward =
+        # pare ta features tou selected ship apo to ships_tensor
+        selected_ship_tensor = self.ships_tensor[ship_indx, :]
 
-        return state, reward, done
+        # arxise na kaneis calculate to reward
+        reward = 0
+
+        # update state part
+        state = {
+            "contracts_state": contracts_tensor,
+            "ships_state": ships_tensor,
+            "contracts_mask": contracts_mask,
+            "ships_mask": ships_mask,
+        }
+
+        pass
 
     def reset(self):
         """
@@ -337,16 +355,38 @@ class CarbonEnv(gym.Env):
         dm_tensor = tf.convert_to_tensor(dm_array)
         return dm_tensor
 
-    def find_distance(self, port_1_number, port_2_number):
-        """
-        `find_distance` returns the distance between two ports
-        Args:
-        * port_1_number : number of port 1
-        * port_2_number : number of port 2
-        """
-        dist_m = self.dm
-        idx_1 = port_1_number - 1
-        idx_2 = port_2_number - 1
-        distance = dist_m[idx_1, idx_2]
-        return distance
+    # def find_distance(self, port_1_number, port_2_number):
+    #     """
+    #     `find_distance` returns the distance between two ports
+    #     Args:
+    #     * port_1_number : number of port 1
+    #     * port_2_number : number of port 2
+    #     """
+    #     dist_m = self.dm
+    #     idx_1 = port_1_number - 1
+    #     idx_2 = port_2_number - 1
+    #     distance = dist_m[idx_1, idx_2]
+    #     return distance
 
+    def find_trip_distance(self, ship, contract):
+        """
+        `find_trip_distance` calculates the trip distance of a ship serving a contract
+        """
+
+        # to port distance einai to feat[7] tou selected contract tensora
+        selected_port_distance = self.contracts_tensor[contract, 7]
+
+        # ta ship numbers einai [1,2,3,4] opote afairw 1 gia to index
+        ship_idx = ship - 1
+
+        # analoga me to poio contract dialeksa
+        # epilegw to antistoixo ballast apo ton tensora tou selected ship
+        # to briskw me contract number mod 4 + 7 pou einai to index pou ksekinane ta ballast features
+
+        ballast_feature_idx = contract % 4 + 7
+
+        selected_ballast_distance = self.ships_tensor[ship_idx, ballast_feature_idx]
+
+        total_distance = selected_port_distance + selected_ballast_distance
+
+        return total_distance

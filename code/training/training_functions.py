@@ -47,10 +47,10 @@ class PolicyGradient(object):
             episode_reward = 0
 
             for step in range(self.max_ep_len):
+                # edw kapou prepei na looparw panw sta available ships
 
                 states.append(state)
-
-                action = self.policy_net.sample_action(np.atleast_2d(state))[0]
+                action = self.policy_net.sample_action(state)
                 state, reward, done, _ = env.step(action)
                 actions.append(action)
                 rewards.append(reward)
@@ -122,8 +122,9 @@ class PolicyGradient(object):
             print("Average reward for batch {}: {:04.2f}".format(t, avg_reward))
         print("Training complete")
         np.save(self.output_path + "rewards.npy", averaged_total_rewards)
+        pass
 
-    def eval(self, env, num_episodes=1):
+    def evaluate(self, env, num_episodes=1):
         paths, rewards = self.play_games(env, num_episodes)
         avg_reward = np.mean(rewards)
         print("Average eval reward: {:04.2f}".format(avg_reward))
