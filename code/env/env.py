@@ -18,19 +18,17 @@ class CarbonEnv(gym.Env):
     def __init__(
         self,
         data_dict={
-            "fleet_path": "data/fleet_small.csv",
+            "ships_path": "data/fleet_small.csv",
             "ports_path": "data/ports_10.csv",
             "dm_path": "data/distance_matrix.csv",
         },
     ):
         super().__init__()
 
-        self.day = 1
-
         self.data_dict = data_dict
 
         # get fleet info in df
-        self.fleet = pd.read_csv(self.data_dict["fleet_path"])
+        self.ships = pd.read_csv(self.data_dict["ships_path"])
 
         # get port info in df
         ports = pd.read_csv(self.data_dict["ports_path"])
@@ -42,7 +40,7 @@ class CarbonEnv(gym.Env):
         # get distance matrix as tensor
         self.dm_tensor = self.create_dm_tensor()
 
-        self.NUM_SHIPS = len(self.fleet)
+        self.NUM_SHIPS = len(self.ships)
         self.NUM_PORTS = len(self.ports)
         self.NUM_DAILY_CONTRACTS = 4
         self.SET_OF_SPEEDS = [10, 12, 14]
@@ -51,29 +49,26 @@ class CarbonEnv(gym.Env):
         self.NUM_SHIP_FEATURES = 11
         self.batch_size = 32
         self.observation_space = {
-            "contracts_state": tf.zeros(
-                shape=(
-                    self.batch_size,
-                    self.NUM_DAILY_CONTRACTS,
-                    self.NUM_CONTRACT_FEATURES,
-                )
-            ),
-            "ships_state": tf.zeros(
-                shape=(self.batch_size, self.NUM_SHIPS, self.NUM_SHIP_FEATURES)
-            ),
-            "contracts_mask": tf.zeros(
-                shape=(self.batch_size, self.NUM_DAILY_CONTRACTS)
-            ),
-            "ships_mask": tf.zeros(shape=(self.batch_size, self.NUM_SHIPS)),
+            "contracts_state": tf.zeros(shape=(self.NUM_DAILY_CONTRACTS, self.NUM_CONTRACT_FEATURES)),
+            "ships_state": tf.zeros(shape=(self.NUM_SHIPS, self.NUM_SHIP_FEATURES)),
+            "contracts_mask": tf.zeros(shape=(self.NUM_DAILY_CONTRACTS, 1)),
+            "ships_mask": tf.zeros(shape=(self.NUM_SHIPS, 1)),
         }
-        self.action_space = {
-            "action": tf.zeros(
-                shape=(
-                    self.batch_size,
-                    (self.NUM_DAILY_CONTRACTS * self.NUM_SPEEDS) + 1,
-                )
-            )
-        }
+        self.observation_space_concatenated = tf.concat(
+            (
+                self.observation_space["contracts_state"],
+                self.observation_space["ships_state"],
+                self.observation_space["contracts_mask"],
+                self.observation_space["ships_mask"],
+            ),
+            axis=1,
+        )
+        self.observation_space_dim = self.observation_space_concatenated.shape
+        self.observation_space_dim = self.observation_space_dim.as_list()
+        self.action_space = {"actions": tf.zeros(shape=((self.NUM_DAILY_CONTRACTS * self.NUM_SPEEDS) + 1, 1))}
+        self.action_space_dim = self.action_space["actions"].shape
+        self.action_space_dim = self.action_space_dim.as_list()
+        self.embedding_size = 128
         self.reset()
 
     def step(self, action):
@@ -111,67 +106,43 @@ class CarbonEnv(gym.Env):
         self.done = False
 
         # Set the fleet to its initial state
-        self.fleet = pd.read_csv(self.data_dict["fleet_path"])
+        self.ships = pd.read_csv(self.data_dict["ships_path"])
 
         # Calculate fleet's required cii
-        self.fleet["cii_threshold"] = self.fleet["dwt"].map(cii_expected)
+        self.ships["cii_threshold"] = self.ships["dwt"].map(cii_expected)
 
         # set fleet at random ports
-        self.fleet["current_port"] = np.random.randint(
-            1, self.NUM_PORTS + 1, self.NUM_DAILY_CONTRACTS
-        )
+        self.ships["current_port"] = np.random.randint(1, self.NUM_PORTS + 1, self.NUM_DAILY_CONTRACTS)
 
         # create a fleet tensor from the fleet df
-        self.fleet_tensor = self.create_fleet_tensor()
-
-        fleet_before_ballast = self.fleet_tensor
+        self.ships_tensor = self.create_ships_tensor()
 
         # Create the contracts for the first day of the year
         self.contracts_df, self.contracts_tensor = self.create_contracts_tensor()
 
         # Add the ballast distances to the fleet tensor
-        self.fleet_tensor = func_ballast(
-            con_tensor=self.contracts_tensor,
-            fleet_tensor=self.fleet_tensor,
-            dm_tensor=self.dm_tensor,
+        self.ships_tensor = func_ballast(
+            con_tensor=self.contracts_tensor, ships_tensor=self.ships_tensor, dm_tensor=self.dm_tensor,
         )
 
         # An entity showing which daily contracts were taken (1) and which were not (0)
-        self.contracts_mask = tf.zeros(
-            shape=(self.batch_size, self.NUM_DAILY_CONTRACTS)
-        )
+        self.contracts_mask = tf.ones(shape=(self.NUM_DAILY_CONTRACTS, 1))
 
         # An entity showing for how many days each ship is to be reserved
         # reserve_duration = (balast_distance of that contract + contract_distance) / picked_speed
-        self.ship_log = np.zeros(shape=(self.batch_size, self.NUM_SHIPS))
+        self.ship_log = np.zeros(shape=(self.NUM_SHIPS, 1))
 
         # should stay 1 for as long as this ship is reserved
-        self.ships_mask = tf.zeros(shape=(self.batch_size, self.NUM_SHIPS))
+        self.ships_mask = tf.ones(shape=(self.NUM_SHIPS, 1))
 
         self.state = {
             "contracts_state": self.contracts_tensor,
-            "ships_state": self.fleet_tensor,
+            "ships_state": self.ships_tensor,
             "contracts_mask": self.contracts_mask,
             "ships_mask": self.ships_mask,
         }
 
         return self.state
-
-    # def update_intra_statuses(self):
-    #     # tha thn ektelw mesa sth loopa gia ka8e ship
-    #     # ti tha kanw gia ka8e shi
-
-    # def update_state_every_day(self):
-    #     """
-
-    #     """
-
-    #     # Baze se
-    #     self.total_contract_log=
-
-    #     mask=np
-
-    #     pass
 
     def create_contracts(self, seed=None):
         """
@@ -194,24 +165,16 @@ class CarbonEnv(gym.Env):
 
         ship_types = np.array(["supramax", "ultramax", "panamax", "kamsarmax"])
 
-        con_df["start_port_number"] = np.random.randint(
-            1, self.NUM_PORTS + 1, size=self.NUM_DAILY_CONTRACTS
-        )
-        con_df["contract_type"] = np.random.choice(
-            ship_types, size=self.NUM_DAILY_CONTRACTS
-        )
-        con_df["end_port_number"] = np.random.randint(
-            1, self.NUM_PORTS + 1, size=self.NUM_DAILY_CONTRACTS
-        )
+        con_df["start_port_number"] = np.random.randint(1, self.NUM_PORTS + 1, size=self.NUM_DAILY_CONTRACTS)
+        con_df["contract_type"] = np.random.choice(ship_types, size=self.NUM_DAILY_CONTRACTS)
+        con_df["end_port_number"] = np.random.randint(1, self.NUM_PORTS + 1, size=self.NUM_DAILY_CONTRACTS)
 
         same_ports = con_df["start_port_number"] == con_df["end_port_number"]
         # check that start and end ports are different
         while sum(same_ports) != 0:
             con_df["end_port_number"] = np.where(
                 same_ports,
-                np.random.randint(
-                    low=1, high=self.NUM_PORTS + 1, size=same_ports.shape
-                ),
+                np.random.randint(low=1, high=self.NUM_PORTS + 1, size=same_ports.shape),
                 con_df["end_port_number"],
             )
             same_ports = con_df["start_port_number"] == con_df["end_port_number"]
@@ -251,9 +214,7 @@ class CarbonEnv(gym.Env):
             4 * np.ones(shape=type_conditions[3].shape),
         ]
 
-        con_df["contract_type"] = np.select(
-            type_conditions, ship_type_to_ship_code_choices
-        )
+        con_df["contract_type"] = np.select(type_conditions, ship_type_to_ship_code_choices)
 
         # calculate duration
 
@@ -287,8 +248,7 @@ class CarbonEnv(gym.Env):
 
         # add contract value
         con_df["value"] = round(
-            con_df["cargo_size"]
-            * (con_df["contract_distance"] / (con_df["contract_duration"] * 1_000_000))
+            con_df["cargo_size"] * (con_df["contract_distance"] / (con_df["contract_duration"] * 1_000_000))
         )
 
         # set contract availability to 1 for each contract
@@ -325,13 +285,13 @@ class CarbonEnv(gym.Env):
         contracts_tensor = tf.convert_to_tensor(contracts_df)
 
         # add a batch size dimension
-        contracts_tensor = tf.expand_dims(contracts_tensor, axis=0)
+        # contracts_tensor = tf.expand_dims(contracts_tensor, axis=0)
 
         return contracts_df, contracts_tensor
 
-    def create_fleet_tensor(self):
+    def create_ships_tensor(self):
         """
-        `create_fleet_tensor` creates a tensor out of the fleets dataframe
+        `create_ships_tensor` creates a tensor out of the fleets dataframe
         """
         # keeping only these features from the fleet df
         cols_to_keep = [
@@ -348,9 +308,9 @@ class CarbonEnv(gym.Env):
             "ballast_4",
         ]
 
-        self.fleet = self.fleet[cols_to_keep]
+        self.ships = self.ships[cols_to_keep]
 
-        df = self.fleet
+        df = self.ships
 
         # converting to float for tensorflow compatibility
         df = df.astype(np.float32)
@@ -359,7 +319,7 @@ class CarbonEnv(gym.Env):
         tensor = tf.convert_to_tensor(df)
 
         # add a batch size dimension
-        tensor = tf.expand_dims(tensor, axis=0)
+        # tensor = tf.expand_dims(tensor, axis=0)
 
         return tensor
 
@@ -387,3 +347,4 @@ class CarbonEnv(gym.Env):
         idx_2 = port_2_number - 1
         distance = dist_m[idx_1, idx_2]
         return distance
+

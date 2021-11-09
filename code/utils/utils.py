@@ -41,14 +41,7 @@ def cii_rating(attained_cii, required_cii):
         return "Rating E"
 
 
-def can_reach(
-    vessel_location,
-    vessel_set_of_speeds,
-    start_port,
-    start_time,
-    free,
-    previous_end_port,
-):
+def can_reach(vessel_location, vessel_set_of_speeds, start_port, start_time, free, previous_end_port):
     """
     function checking if a vessel can reach a start port on time
     """
@@ -112,15 +105,12 @@ def find_distance(port_1_number, port_2_number, dm):
 
 def func_ballast(con_tensor, fleet_tensor, dm_tensor):
     dm = dm_tensor.numpy()
-    # start_port idxs
-    sp_idx = con_tensor[:, :, 0] - 1
+    sp_idx = con_tensor[:, 0] - 1
     cols_idx = sp_idx.numpy().astype(int)
-    cols_idx = cols_idx[0]
 
     # current_port idxs
-    cp_idx = fleet_tensor[:, :, 4] - 1
+    cp_idx = fleet_tensor[:, 4] - 1
     rows_idx = cp_idx.numpy().astype(int)
-    rows_idx = rows_idx[0]
 
     # get ballast data from distance matrix
     bd = dm[np.ix_(rows_idx, cols_idx)]
@@ -139,11 +129,7 @@ def func_ballast(con_tensor, fleet_tensor, dm_tensor):
     ones_col_dim = num_fleet_feats - num_contracts
     # creating an array of ones and zeros for the mask
     ones_and_zeros = tf.concat(
-        [
-            tf.ones([num_contracts, ones_col_dim]),
-            tf.zeros([num_contracts, num_contracts]),
-        ],
-        axis=1,
+        [tf.ones([num_contracts, ones_col_dim]), tf.zeros([num_contracts, num_contracts]),], axis=1,
     )
     # casting the ones and zeros to boolean to create the boolean mask
     mask = tf.cast(ones_and_zeros, dtype="bool")

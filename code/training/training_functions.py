@@ -17,45 +17,39 @@ from models.models import BaselineNet, PolicyNet
 
 
 class PolicyGradient(object):
-    def __init__(
-        self,
-        env,
-        num_iterations=2,
-        batch_size=2000,
-        max_ep_len=365 * 4,
-        output_path="../results/",
-    ):
+    def __init__(self, env, num_iterations=2, max_ep_len=365 * 4, output_path="../results/"):
         self.output_path = output_path
         if not exists(output_path):
             makedirs(output_path)
         self.env = env
-        # dhlwsh input
-        # self.observation_dim = self.env.observation_space.shape[0]
-        self.action_dim = self.env.action_space.n
+        self.batch_size = self.env.batch_size
+        # to observation shape einai 4, 10+11+1+1 ? 10=contracts_feats,11=fleet_feats,1=contacts_mask_feats,1=fleet_mask_feats
+        self.observation_dim = self.env.observation_space_dim
+        self.action_dim = self.env.action_space_dim
         self.gamma = 0.99
         self.num_iterations = num_iterations
-        self.batch_size = batch_size
         self.max_ep_len = max_ep_len
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=3e-2)
-        self.policy_net = PolicyNet(emb=128, output_size=self.action_dim)
-        self.baseline_net = BaselineNet(emb=128, output_size=1)
+        self.policy_net = PolicyNet(embedding_size=128, output_size=self.action_dim)
+        self.baseline_net = BaselineNet(embedding_size=128, output_size=1)
 
     def play_games(self, env=None, num_episodes=10):
         episode = 0
         episode_rewards = []
         paths = []
         t = 0
-        if not env:
+        if env is None:
             env = self.env
 
         while num_episodes or t < self.batch_size:
-            state = env.reset()
+            state = env.reset()  #
             states, actions, rewards = [], [], []
             episode_reward = 0
 
             for step in range(self.max_ep_len):
-                # for each ship
+
                 states.append(state)
+
                 action = self.policy_net.sample_action(np.atleast_2d(state))[0]
                 state, reward, done, _ = env.step(action)
                 actions.append(action)
@@ -94,12 +88,10 @@ class PolicyGradient(object):
         returns = np.concatenate(all_returns)
         return returns
 
-    def get_advantage(self, returns, observations):
-        values = self.baseline_net.forward(observations).numpy()
+    def get_advantage(self, returns, state):
+        values = self.baseline_net.forward(state).numpy()
         advantages = returns - values
-        advantages = (advantages - np.mean(advantages)) / np.sqrt(
-            np.sum(advantages ** 2)
-        )
+        advantages = (advantages - np.mean(advantages)) / np.sqrt(np.sum(advantages ** 2))
         return advantages
 
     def update_policy(self, observations, actions, advantages):
@@ -107,18 +99,15 @@ class PolicyGradient(object):
         actions = tf.convert_to_tensor(actions)
         advantages = tf.convert_to_tensor(advantages)
         with tf.GradientTape() as tape:
-            log_prob = self.policy_net.action_distribution(observations).log_prob(
-                actions
-            )
+            log_prob = self.policy_net.action_distribution(observations).log_prob(actions)
             loss = -tf.math.reduce_mean(log_prob * tf.cast(advantages, tf.float32))
         grads = tape.gradient(loss, self.policy_net.model.trainable_weights)
-        self.optimizer.apply_gradients(
-            zip(grads, self.policy_net.model.trainable_weights)
-        )
+        self.optimizer.apply_gradients(zip(grads, self.policy_net.model.trainable_weights))
 
     def train(self):
         all_total_rewards = []
         averaged_total_rewards = []
+        #
         for t in range(self.num_iterations):
             paths, total_rewards = self.play_games()
             all_total_rewards.extend(total_rewards)
