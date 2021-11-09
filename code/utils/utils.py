@@ -104,6 +104,7 @@ def find_distance(port_1_number, port_2_number, dm):
 
 
 def func_ballast(con_tensor, ships_tensor, dm_tensor):
+
     dm = dm_tensor.numpy()
     sp_idx = con_tensor[:, 0] - 1
     cols_idx = sp_idx.numpy().astype(int)
@@ -138,3 +139,33 @@ def func_ballast(con_tensor, ships_tensor, dm_tensor):
     fleet_with_ballast = tf.where(mask, ships_tensor, bd_ext)
     return fleet_with_ballast
 
+
+def map_action(selection):
+    """
+    `map_action` maps the selected action `selection` to contract number and speed
+
+    Inputs : The selected action `selection`
+    Outputs: The selected contract `selected_contract` and the selected speed `selected speed`
+    """
+    possible_contracts = np.array([0, 1, 2, 3])
+    possible_speeds = np.array([10, 12, 14])
+    # print(f"The selected action is {selection}")
+    if selection not in np.arange(0, 13):
+        # print(f"Your selected action {selection} is out of the possible bounds")
+        # print("")
+        selected_contract = "Out of bounds"
+        selected_speed = "Out of bounds"
+    elif selection == 12:
+        selected_contract = None
+        selected_speed = 0
+        # print(f"This means you did not select any contract")
+        # print(f"The selected speed is {selected_speed} knots")
+        # print("")
+
+    else:
+        selected_contract = possible_contracts[selection // 3]
+        selected_speed = possible_speeds[selection % 3]
+        # print(f"The selected contract is contract {selected_contract+1}")
+        # print(f"The selected speed is {selected_speed} knots")
+        # print("")
+    return selected_contract, selected_speed
