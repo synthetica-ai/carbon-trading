@@ -90,21 +90,43 @@ class CarbonModel(tf.keras.Model):
         context = self.context_layer(context)
 
         # reduce the context to get a 13,1 logits vector instead of 4,13
-        context = tf.math.reduce_mean(context, axis=0)
+        # context = tf.math.reduce_mean(context, axis=0)
+        # context = tf.expand_dims(context, axis=0)
+        print(f"To shape tou context einai {context.shape}")
         logits = self.output_layer(context)
+        # reduce the logits with the mean to get a 13,1 vector anti gia 4,13
+        logits = tf.math.reduce_mean(logits, axis=0)
+        logits = tf.expand_dims(logits, axis=1)
+
+        print(f"To shape twn logits prepei na einai 13 kai einai {logits.shape}")
 
         if self.policynet_flag:
 
             # an exw dialeksh to policynet bale maska
             # opou h maska twn contracts einai 0 bale -np.Infinity
             # h actions_boolean_mask exei dimension
+            print("bhka sto if")
             contracts_bm = tf.equal(self.contracts_mask, 0)
+            print(f"to boolean mask tou contracts einai {contracts_bm}")
+            print(f"to shape tou boolean mask einai {contracts_bm.shape}")
             actions_bm = tf.where(contracts_bm, tf.repeat(tf.constant(False), 3), tf.repeat(tf.constant(True), 3))
+            print(f"to boolean mask tou actions einai {actions_bm}")
             actions_bm = tf.reshape(actions_bm, [-1])
+            print(f"ekana flatten thn bm tou actions")
+            print(f"to boolean mask tou actions twra einai {actions_bm}")
             actions_bm = tf.expand_dims(actions_bm, axis=1)
+            print(f"ebala mia akoma diastash sthn bm tou actions")
+            print(f"to boolean mask tou actions twra einai {actions_bm}")
             # bazw ena teleutaio true gia to 13 action tou select nothing
             actions_bm = tf.concat((actions_bm, tf.constant(True, shape=(1, 1))), axis=0)
+            print(f"ebala ena teleutaio true sth bm tou actions")
+            print(f"to boolean mask tou actions twra einai {actions_bm}")
+            print(f"to boolean mask tou actions twra exei shape {actions_bm.shape}")
+
             logits = tf.where(actions_bm, float("-inf"), logits)
+            print(f"ta logits einai {logits}")
+            if logits.shape.as_list() == [13, 1]:
+                print(f"Success epitelous ta logits einai {logits.shape}")
 
         return logits
 
