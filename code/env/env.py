@@ -65,7 +65,8 @@ class CarbonEnv(gym.Env):
         )
         self.observation_space_dim = self.observation_space_concatenated.shape
         self.observation_space_dim = self.observation_space_dim.as_list()
-        self.action_space = {"actions": tf.zeros(shape=((self.NUM_DAILY_CONTRACTS * self.NUM_SPEEDS) + 1, 1))}
+        # self.action_space = {"actions": tf.zeros(shape=((self.NUM_DAILY_CONTRACTS * self.NUM_SPEEDS) + 1, 1))}
+        self.action_space = {"actions": tf.zeros(shape=(self.NUM_SPEEDS + 1, 1))}
         self.action_space_dim = self.action_space["actions"].shape
         self.action_space_dim = self.action_space_dim.as_list()
         self.embedding_size = 128
@@ -126,7 +127,8 @@ class CarbonEnv(gym.Env):
         )
 
         # An entity showing which daily contracts were taken (1) and which were not (0)
-        self.contracts_mask = tf.ones(shape=(self.NUM_DAILY_CONTRACTS, 1))
+        # self.contracts_mask = tf.ones(shape=(self.NUM_DAILY_CONTRACTS, 1))
+        self.contracts_mask = tf.convert_to_tensor(np.array([[0], [0], [0], [1]]), dtype=tf.float32)
 
         # An entity showing for how many days each ship is to be reserved
         # reserve_duration = (balast_distance of that contract + contract_distance) / picked_speed

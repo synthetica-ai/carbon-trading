@@ -103,13 +103,13 @@ def find_distance(port_1_number, port_2_number, dm):
     return distance
 
 
-def func_ballast(con_tensor, fleet_tensor, dm_tensor):
+def func_ballast(con_tensor, ships_tensor, dm_tensor):
     dm = dm_tensor.numpy()
     sp_idx = con_tensor[:, 0] - 1
     cols_idx = sp_idx.numpy().astype(int)
 
     # current_port idxs
-    cp_idx = fleet_tensor[:, 4] - 1
+    cp_idx = ships_tensor[:, 4] - 1
     rows_idx = cp_idx.numpy().astype(int)
 
     # get ballast data from distance matrix
@@ -124,9 +124,9 @@ def func_ballast(con_tensor, fleet_tensor, dm_tensor):
     # cast the extended ballast data to float
     bd_ext = tf.cast(bd_ext, dtype=float)
     # number of fleet features
-    num_fleet_feats = 11
+    num_ship_feats = 11
     num_contracts = 4
-    ones_col_dim = num_fleet_feats - num_contracts
+    ones_col_dim = num_ship_feats - num_contracts
     # creating an array of ones and zeros for the mask
     ones_and_zeros = tf.concat(
         [tf.ones([num_contracts, ones_col_dim]), tf.zeros([num_contracts, num_contracts]),], axis=1,
@@ -135,6 +135,6 @@ def func_ballast(con_tensor, fleet_tensor, dm_tensor):
     mask = tf.cast(ones_and_zeros, dtype="bool")
 
     # where mask == true take fleet data else take ext_ballast data
-    fleet_with_ballast = tf.where(mask, fleet_tensor, bd_ext)
+    fleet_with_ballast = tf.where(mask, ships_tensor, bd_ext)
     return fleet_with_ballast
 

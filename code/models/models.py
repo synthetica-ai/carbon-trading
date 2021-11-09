@@ -20,17 +20,17 @@ class CarbonModel(tf.keras.Model):
 
 
     Takes inputs:
-    * `state_dict` = {"contracts_tensor":`contracts_tensor`,
-                    "fleet_tensor":`fleet_tensor`,
+    * `state_dict` = {"contracts_state":`contracts_tensor`,
+                    "ships_state":`ships_tensor`,
                     "contracts_mask":`contracts_mask`,
-                    "fleet_mask":`fleet_mask`}
+                    "ships_mask":`ships_mask`}
 
     Outputs:
     * `logits`
 
     """  # TODO bug is here
 
-    def __init__(self, output_size, embedding_size, policy_net_flag):
+    def __init__(self, output_size, embedding_size, policynet_flag):
         super(CarbonModel, self).__init__()
         """
         `__init__` is executed when the instance is first initiated
@@ -39,7 +39,7 @@ class CarbonModel(tf.keras.Model):
 
         self.output_size = output_size
         self.embedding_size = embedding_size
-        self.policy_net_flag = policy_net_flag
+        self.policynet_flag = policynet_flag
         # self.contracts_input_shape = contracts_input_shape
         # self.fleet_input_shape = fleet_input_shape
 
@@ -56,30 +56,30 @@ class CarbonModel(tf.keras.Model):
         self.embedding_layer_2 = tf.keras.layers.Dense(
             self.embedding_size, activation="relu", name="embdedding_layer_2"
         )
-        self.context_layer = tf.keras.layers.Dense(256, activation="relu", name="context_layer")
+        self.context_layer = tf.keras.layers.Dense(64, activation="relu", name="context_layer")
         self.output_layer = tf.keras.layers.Dense(self.output_size, activation="linear", name="output_layer")
 
     def call(self, state_dict):
         """
         Gets executed when a CarbonModel instance is called.
         Inputs:
-        * `state_dict`: {"contracts_tensor":contracts_tensor,
-                          "fleet_tensor":fleet_tensor,
+        * `state_dict`: {"contracts_state":contracts_tensor,
+                          "ships_state":ships_tensor,
                           "contracts_mask":contracts_mask,
-                          "fleet_mask":fleet_mask}
+                          "ships_mask":ships_mask}
 
         """
 
-        self.contracts_tensor = state_dict["contracts_tensor"]
-        self.fleet_tensor = state_dict["fleet_tensor"]
+        self.contracts_tensor = state_dict["contracts_state"]
+        self.ships_tensor = state_dict["ships_state"]
         self.contracts_mask = state_dict["contracts_mask"]
-        self.fleet_mask = state_dict["fleet_mask"]
+        self.ships_mask = state_dict["ships_mask"]
 
         x = self.dense1(self.contracts_tensor)
         x = self.dense2(x)
         contracts_embedding = self.embedding_layer_1(x)
 
-        y = self.dense3(self.fleet_tensor)
+        y = self.dense3(self.ships_tensor)
         y = self.dense4(y)
         fleet_embedding = self.embedding_layer_2(y)
 
@@ -88,13 +88,23 @@ class CarbonModel(tf.keras.Model):
 
         context = tf.concat([contracts_embedding, fleet_embedding], 1)
         context = self.context_layer(context)
+
+        # reduce the context to get a 13,1 logits vector instead of 4,13
+        context = tf.math.reduce_mean(context, axis=0)
         logits = self.output_layer(context)
 
         if self.policynet_flag:
+
             # an exw dialeksh to policynet bale maska
-            # opou h maska twn contracts einai 0 bale -np.Infinity mesw
-            contracts_boolean_flag = tf.equal(self.contracts_mask, 0)
-            logits = tf.where(contracts_boolean_flag, float("-inf"), logits)
+            # opou h maska twn contracts einai 0 bale -np.Infinity
+            # h actions_boolean_mask exei dimension
+            contracts_bm = tf.equal(self.contracts_mask, 0)
+            actions_bm = tf.where(contracts_bm, tf.repeat(tf.constant(False), 3), tf.repeat(tf.constant(True), 3))
+            actions_bm = tf.reshape(actions_bm, [-1])
+            actions_bm = tf.expand_dims(actions_bm, axis=1)
+            # bazw ena teleutaio true gia to 13 action tou select nothing
+            actions_bm = tf.concat((actions_bm, tf.constant(True, shape=(1, 1))), axis=0)
+            logits = tf.where(actions_bm, float("-inf"), logits)
 
         return logits
 
@@ -110,7 +120,7 @@ class BaselineNet(object):
 
     def __init__(self, embedding_size):
         self.embedding_size = embedding_size
-        self.baseline_model = CarbonModel(embedding_size=self.embedding_size, output_size=1, policy_net_flag=False)
+        self.baseline_model = CarbonModel(embedding_size=self.embedding_size, output_size=1, policynet_flag=False)
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=3e-2)
 
     def forward(self, state_dict):
@@ -141,12 +151,12 @@ class PolicyNet(object):
         self.embedding_size = embedding_size
         self.output_size = output_size
         self.policy_model = CarbonModel(
-            embedding_size=self.embedding_size, output_size=self.output_size, policy_net_flag=True
+            embedding_size=self.embedding_size, output_size=self.output_size, policynet_flag=True
         )
 
     def action_distribution(self, state_dict):
         logits = self.policy_model(state_dict)
-        return tfp.distributions.Categorical(logits=logits)
+        return logits, tfp.distributions.Categorical(logits=logits)
 
     def sample_action(self, state_dict):
         sampled_actions = self.action_distribution(state_dict).sample().numpy()
