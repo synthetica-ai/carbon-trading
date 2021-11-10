@@ -15,9 +15,15 @@ def cii_expected(dwt, year=2023):
     return cii_required
 
 
-def cii_attained(ship, speed, total_distance):
+def find_cii_attained(ship_number, speed, distance):
     """
-    `cii_attained` calculates the attained cii of a vessel
+    `find_cii_attained` calculates the attained cii of a ship
+
+    Inputs
+
+    ship_number: the number of the ship [1,2,3,4]
+    speed : the speed of the ship
+    distance : the distance covered
     """
 
     speed_factors_dict_per_ship_type = {
@@ -27,18 +33,18 @@ def cii_attained(ship, speed, total_distance):
         4: (80_000, 0.00735917, 0.08172108),
     }
     # dwt
-    dwt = speed_factors_dict_per_ship_type[ship][0]
+    dwt = speed_factors_dict_per_ship_type[ship_number][0]
 
     # the factor of speed^3
-    c3_speed_factor = speed_factors_dict_per_ship_type[ship][1]
+    c3_speed_factor = speed_factors_dict_per_ship_type[ship_number][1]
 
     # the factor of speed^2
-    c2_speed_factor = speed_factors_dict_per_ship_type[ship][2]
+    c2_speed_factor = speed_factors_dict_per_ship_type[ship_number][2]
 
     # co2 emissions from speed formula
     co2_emissions = c3_speed_factor * (speed ** 3) + c2_speed_factor * (speed ** 2)
 
-    cii_attained = (co2_emissions * 1_000_000) / (dwt * total_distance)
+    cii_attained = (co2_emissions * 1_000_000) / (dwt * distance)
     return cii_attained
 
 
@@ -60,40 +66,6 @@ def cii_rating(attained_cii, required_cii):
         return "Rating E"
 
 
-def can_reach(vessel_location, vessel_set_of_speeds, start_port, start_time, free, previous_end_port):
-    """
-    function checking if a vessel can reach a start port on time
-    """
-    # if the vessel is free
-    # the vessel has to reach the new start port on time
-    # u = Dx / Dt
-
-    # # if the vessel is not free
-    # the vessel has to reach the previous end port on time # use set of speeds
-
-    # u = Dx / Dt
-    # and then
-    # the vessel has to reach the new start port on time
-
-    pass
-
-
-def can_serve(vessels_df, contract_df, ports_df):
-    """
-    function checking if a vessel meets the conditions to serve a contract
-    """
-    # # Check if vessel has the capacity to transport the cargo
-    # vessel_capacity >= cargo_volume
-
-    #     # If it does then check if it is free or already serving a cargo
-    #     vessel_free == Yes:
-
-    #         # Check if the vessel can reach the start port at start_time
-    #         can_reach()
-
-    pass
-
-
 def create_tensor_dm(dm_df):
     """
     `create_tensor_dm` produces a tf tensor out of the distance matrix dataframe
@@ -107,33 +79,18 @@ def create_tensor_dm(dm_df):
     return dm_tensor
 
 
-def find_distance(port_1_number, port_2_number, dm):
-    """
-    `find_distance` returns the distance between two ports
-    Args:
-    * port_1_number : number of port 1
-    * port_2_number : number of port 2
-    * dm : distance matrix array or tensor
-    """
-    dist_m = dm
-    idx_1 = port_1_number - 1
-    idx_2 = port_2_number - 1
-    distance = dist_m[idx_1, idx_2]
-    return distance
-
-
 def func_ballast(con_tensor, ships_tensor, dm_tensor):
 
     dm = dm_tensor.numpy()
-    sp_idx = con_tensor[:, 0] - 1
-    cols_idx = sp_idx.numpy().astype(int)
+    sp_idistance = con_tensor[:, 0] - 1
+    cols_idistance = sp_idistance.numpy().astype(int)
 
-    # current_port idxs
-    cp_idx = ships_tensor[:, 4] - 1
-    rows_idx = cp_idx.numpy().astype(int)
+    # current_port idistances
+    cp_idistance = ships_tensor[:, 4] - 1
+    rows_idistance = cp_idistance.numpy().astype(int)
 
     # get ballast data from distance matrix
-    bd = dm[np.ix_(rows_idx, cols_idx)]
+    bd = dm[np.ix_(rows_idistance, cols_idistance)]
     # convert to tf tensor
     bd = tf.convert_to_tensor(bd)
     # extend the ballast data
@@ -159,22 +116,22 @@ def func_ballast(con_tensor, ships_tensor, dm_tensor):
     return fleet_with_ballast
 
 
-def map_action(selection):
+def map_action(selected_action):
     """
-    `map_action` maps the selected action `selection` to contract number and speed
+    `map_action` maps the selected action `selected_action` to contract number and speed
 
-    Inputs : The selected action `selection`
+    Inputs : The selected action `selected_action`
     Outputs: The selected contract `selected_contract` and the selected speed `selected speed`
     """
     possible_contracts = np.array([0, 1, 2, 3])
     possible_speeds = np.array([10, 12, 14])
-    # print(f"The selected action is {selection}")
-    if selection not in np.arange(0, 13):
-        # print(f"Your selected action {selection} is out of the possible bounds")
+    # print(f"The selected action is {selected_action}")
+    if selected_action not in np.arange(0, 13):
+        # print(f"Your selected action {selected_action} is out of the possible bounds")
         # print("")
         selected_contract = "Out of bounds"
         selected_speed = "Out of bounds"
-    elif selection == 12:
+    elif selected_action == 12:
         selected_contract = None
         selected_speed = 0
         # print(f"This means you did not select any contract")
@@ -182,10 +139,68 @@ def map_action(selection):
         # print("")
 
     else:
-        selected_contract = possible_contracts[selection // 3]
-        selected_speed = possible_speeds[selection % 3]
+        selected_contract = possible_contracts[selected_action // 3]
+        selected_speed = possible_speeds[selected_action % 3]
         # print(f"The selected contract is contract {selected_contract+1}")
         # print(f"The selected speed is {selected_speed} knots")
         # print("")
     return selected_contract, selected_speed
+
+
+def find_duration(u, distance):
+    """
+    `find_duration` finds the duration of a trip with distance `distance` conducted with speed `u` in `days`
+    """
+    dt_hours = (distance / u).round()
+    dt_days = (dt_hours / 24).round()
+    return dt_days
+
+
+# def find_distance(port_1_number, port_2_number, dm):
+# """
+# `find_distance` returns the distance between two ports
+# Args:
+# * port_1_number : number of port 1
+# * port_2_number : number of port 2
+# * dm : distance matrix array or tensor
+# """
+# dist_m = dm
+# idistance_1 = port_1_number - 1
+# idistance_2 = port_2_number - 1
+# distance = dist_m[idistance_1, idistance_2]
+# return distance
+
+
+# def can_reach(vessel_location, vessel_set_of_speeds, start_port, start_time, free, previous_end_port):
+#     """
+#     function checking if a vessel can reach a start port on time
+#     """
+#     # if the vessel is free
+#     # the vessel has to reach the new start port on time
+#     # u = distance / Dt
+
+#     # # if the vessel is not free
+#     # the vessel has to reach the previous end port on time # use set of speeds
+
+#     # u = distance / Dt
+#     # and then
+#     # the vessel has to reach the new start port on time
+
+#     pass
+
+
+# def can_serve(vessels_df, contract_df, ports_df):
+#     """
+#     function checking if a vessel meets the conditions to serve a contract
+#     """
+#     # # Check if vessel has the capacity to transport the cargo
+#     # vessel_capacity >= cargo_volume
+
+#     #     # If it does then check if it is free or already serving a cargo
+#     #     vessel_free == Yes:
+
+#     #         # Check if the vessel can reach the start port at start_time
+#     #         can_reach()
+
+#     pass
 

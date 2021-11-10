@@ -4,8 +4,16 @@ from gym import spaces
 import pandas as pd
 import numpy as np
 import tensorflow as tf
+from tensorflow.python.framework.op_callbacks import should_invoke_op_callbacks
 from tensorflow.python.framework.ops import Tensor
-from utils.utils import cii_expected, func_ballast, map_action
+from utils.utils import (
+    cii_expected,
+    find_cii_attained,
+    func_ballast,
+    map_action,
+    find_duration,
+)
+import random
 
 
 class CarbonEnv(gym.Env):
@@ -50,7 +58,7 @@ class CarbonEnv(gym.Env):
         self.NUM_SHIP_FEATURES = 11
         self.batch_size = 32
         self.observation_space = {
-            "contracts_state": tf.zeros(shape=(self.NUM_DAILY_CONTRACTS, self.NUM_CONTRACT_FEATURES)),
+            "contracts_state": tf.zeros(shape=(self.NUM_DAILY_CONTRACTS, self.NUM_CONTRACT_FEATURES,)),
             "ships_state": tf.zeros(shape=(self.NUM_SHIPS, self.NUM_SHIP_FEATURES)),
             "contracts_mask": tf.zeros(shape=(self.NUM_DAILY_CONTRACTS, 1)),
             "ships_mask": tf.zeros(shape=(self.NUM_SHIPS, 1)),
@@ -66,7 +74,7 @@ class CarbonEnv(gym.Env):
         )
         self.observation_space_dim = self.observation_space_concatenated.shape
         self.observation_space_dim = self.observation_space_dim.as_list()
-        self.action_space = {"actions": tf.zeros(shape=((self.NUM_DAILY_CONTRACTS * self.NUM_SPEEDS) + 1, 1))}
+        self.action_space = {"actions": tf.zeros(shape=((self.NUM_DAILY_CONTRACTS * self.NUM_SPEEDS) + 1, 1,))}
         # self.action_space = {"actions": tf.zeros(shape=(self.NUM_SPEEDS + 1, 1))}
         self.action_space_dim = self.action_space["actions"].shape
         self.action_space_dim = self.action_space_dim.as_list()
@@ -86,28 +94,66 @@ class CarbonEnv(gym.Env):
         ### Prosoxh!!!!
         # to ship_number einai [1,2,3,4] den ksekinaei apo to 0!
         # edw aferw apo to ship_number to 1 gia na parw to epi8umhto ship index
-        ship_indx = ship_number - 1
+        ship_idx = ship_number - 1
 
         # an to action einai to 12 dhladh mhn pareis contract tote
 
         # mapare to action se contract kai speed
-        contract, speed = map_action(action)
+        selected_contract, selected_speed = map_action(action)
 
-        print(f"The contract is contract_{contract} and the speed for ship {ship_number} is {speed} knots")
+        print(
+            f"The contract selected is contract_{selected_contract} \
+              and the speed selected for ship {ship_number} is {selected_speed} knots"
+        )
 
         # pare ta features tou selected ship apo to ships_tensor
-        selected_ship_tensor = self.ships_tensor[ship_indx, :]
+        selected_ship_tensor = self.ships_tensor[ship_idx, :]
 
         # arxise na kaneis calculate to reward
         reward = 0
+        print(f"The reward at the start is {reward}")
+        #
 
+        contract_value = self.contracts_tensor[selected_contract, 9]
+        print(f"The value of the selected contract is {contract_value}")
+
+        # total_trip_distance =  ballast + contract distance
+        total_trip_distance = self.find_trip_distance(ship_idx)
+        print(f"The total distance of the trip (ballast + contract distance) is {total_trip_distance}")
+        actual_trip_duration = find_duration(u=selected_speed, distance=total_trip_distance,)
+        print(f"The duration of the trip (ballast + contract distance) in days is {actual_trip_duration}")
+
+        # lateness= contract_duration - actual_trip_duration
+        lateness = self.contracts_tensor[selected_contract, 8] - actual_trip_duration
+        print(
+            f"The lateness in days for the selected contract {selected_contract},\
+              the selected speed {selected_speed}, and selected ship {ship_number} is {lateness}"
+        )
+
+        # cii = cii_threshold - cii_attained
+        cii_threshold = selected_ship_tensor[2]
+        print(f"The cii threshold of the selected ship {ship_number} is {cii_threshold}")
+        cii_attained = find_cii_attained(ship_number=ship_number, speed=selected_speed, distance=total_trip_distance,)
+        print(f"The attained cii for the selected ship {ship_number} is {cii_attained}")
+        cii = cii_threshold - cii_attained
+
+        print(f"The reward component regarding the cii is {cii} ")
+
+        reward = contract_value + cii + lateness
+
+        print(f"The total reward is contract value {contract_value} + lateness {lateness} + cii {cii} = {reward} ")
         # update state part
-        state = {
-            "contracts_state": contracts_tensor,
-            "ships_state": ships_tensor,
-            "contracts_mask": contracts_mask,
-            "ships_mask": ships_mask,
-        }
+
+        # bale to cii_attained sto selected_ship_tensor[3]
+        #  dhladh selected_ship_tensor[3] += cii_attained
+        # den mporei na ginei etsi me += giati o tensoras einai immutable (ftiaxnw kainourio me concat)
+
+        # state = {
+        #     "contracts_state": contracts_tensor,
+        #     "ships_state": ships_tensor,
+        #     "contracts_mask": contracts_mask,
+        #     "ships_mask": ships_mask,
+        # }
 
         pass
 
@@ -119,7 +165,7 @@ class CarbonEnv(gym.Env):
         * initial_state : the initial state / observation of the environment.
 
         """
-
+        np.random.seed(4)  # bgalto meta
         self.day = 0
         self.info = {}
         self.done = False
@@ -137,12 +183,15 @@ class CarbonEnv(gym.Env):
         self.ships_tensor = self.create_ships_tensor()
 
         # Create the contracts for the first day of the year
-        self.contracts_df, self.contracts_tensor = self.create_contracts_tensor()
+        (self.contracts_df, self.contracts_tensor,) = self.create_contracts_tensor()
 
-        # Add the ballast distances to the fleet tensor
+        # Add the ballast distances to the ships tensor
         self.ships_tensor = func_ballast(
             con_tensor=self.contracts_tensor, ships_tensor=self.ships_tensor, dm_tensor=self.dm_tensor,
         )
+
+        # bale ta ballast distances pisw sto ships df
+        # self.ships =
 
         # An entity showing which daily contracts were taken (1) and which were not (0)
         # self.contracts_mask = tf.ones(shape=(self.NUM_DAILY_CONTRACTS, 1))
@@ -164,10 +213,12 @@ class CarbonEnv(gym.Env):
 
         return self.state
 
-    def create_contracts(self, seed=None):
+    def create_contracts(self):
         """
         `create_contracts` creats cargo contracts for a specific day of the year
         """
+        # auto bgalto meta
+        np.random.seed(7)
         con_df = pd.DataFrame(
             columns=[
                 "start_port_number",
@@ -194,7 +245,7 @@ class CarbonEnv(gym.Env):
         while sum(same_ports) != 0:
             con_df["end_port_number"] = np.where(
                 same_ports,
-                np.random.randint(low=1, high=self.NUM_PORTS + 1, size=same_ports.shape),
+                np.random.randint(low=1, high=self.NUM_PORTS + 1, size=same_ports.shape,),
                 con_df["end_port_number"],
             )
             same_ports = con_df["start_port_number"] == con_df["end_port_number"]
@@ -243,10 +294,8 @@ class CarbonEnv(gym.Env):
 
         # pick distance between ports from df
         dx = con_df["contract_distance"]
-        # find duration of trip between ports with picked speed in hours
-        dt_hours = (dx / u_picked).round()
-        # find duration of trip between ports in days
-        dt_days = (dt_hours / 24).round()
+
+        dt_days = find_duration(distance=dx, u=u_picked)
 
         # get upper triangle entries of distance matrix
         x = self.dm_df.iloc[:, 1:].to_numpy(dtype=np.int32)
@@ -266,7 +315,7 @@ class CarbonEnv(gym.Env):
         # end_day ends at 23:59
         con_df["end_day"] = con_df["start_day"] + con_df["contract_duration"] - 1
 
-        # add contract value
+        # add contract value : einai analogo tou (kg * miles) / time at sea
         con_df["value"] = round(
             con_df["cargo_size"] * (con_df["contract_distance"] / (con_df["contract_duration"] * 1_000_000))
         )
@@ -355,38 +404,36 @@ class CarbonEnv(gym.Env):
         dm_tensor = tf.convert_to_tensor(dm_array)
         return dm_tensor
 
-    # def find_distance(self, port_1_number, port_2_number):
-    #     """
-    #     `find_distance` returns the distance between two ports
-    #     Args:
-    #     * port_1_number : number of port 1
-    #     * port_2_number : number of port 2
-    #     """
-    #     dist_m = self.dm
-    #     idx_1 = port_1_number - 1
-    #     idx_2 = port_2_number - 1
-    #     distance = dist_m[idx_1, idx_2]
-    #     return distance
-
-    def find_trip_distance(self, ship, contract):
+    def find_trip_distance(self, ship_idx, contract):
         """
         `find_trip_distance` calculates the trip distance of a ship serving a contract
+
+        contract : selected contract
+        ship_idx : ship_number - 1
         """
 
-        # to port distance einai to feat[7] tou selected contract tensora
-        selected_port_distance = self.contracts_tensor[contract, 7]
+        # to contract distance einai to feat[8] tou selected contract tensora
+        selected_port_distance = self.contracts_tensor[contract, 8]
 
-        # ta ship numbers einai [1,2,3,4] opote afairw 1 gia to index
-        ship_idx = ship - 1
+        #
+        selected_start_port = self.contracts_tensor[contract, 0]
+
+        selected_end_port = self.contracts_tensor[contract, 1]
+
+        print(f"We chose contract {contract}")
+        print(f"The start port of contract {contract} is {selected_start_port}")
+        print(f"The end port of contract {contract} is {selected_end_port}")
+        print(f"The distance between the ports {selected_port_distance}")
 
         # analoga me to poio contract dialeksa
         # epilegw to antistoixo ballast apo ton tensora tou selected ship
         # to briskw me contract number mod 4 + 7 pou einai to index pou ksekinane ta ballast features
 
         ballast_feature_idx = contract % 4 + 7
-
+        print(f"To ballast idx pou epileksame einai to {ballast_feature_idx}")
         selected_ballast_distance = self.ships_tensor[ship_idx, ballast_feature_idx]
-
+        print(f"To ballast distance pou epileksame einai {selected_ballast_distance} nm")
         total_distance = selected_port_distance + selected_ballast_distance
+        print(f"To synoliko distance einai {selected_port_distance} + {selected_ballast_distance} = {total_distance}")
 
         return total_distance

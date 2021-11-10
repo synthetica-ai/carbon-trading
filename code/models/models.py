@@ -158,6 +158,9 @@ class BaselineNet(object):
         """
         A good idea for the loss of the value function is the monte carlo error
         loss_value = sum_over_samples[estimated_advantage^2]
+
+
+        ta target einai ta returns? prepei na dw diafora returns kai advantages
         """
         with tf.GradientTape() as tape:
             predictions = self.forward(state_dict)
@@ -186,9 +189,9 @@ class PolicyNet(object):
         # squeeze logits before they get in the categorical
         # auto prepei na ginei gia na parw 1 sample apo thn Categorical kai oxi batches twn 13
         logits = tf.squeeze(logits)
-        return tfp.distributions.Categorical(logits=logits)
+        return logits, tfp.distributions.Categorical(logits=logits)
 
     def sample_action(self, state_dict):
-        sampled_actions = self.action_distribution(state_dict).sample().numpy()
+        sampled_actions = self.action_distribution(state_dict)[1].sample().numpy()
         return sampled_actions
 
