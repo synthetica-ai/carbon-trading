@@ -1,4 +1,4 @@
-from typing_extensions import ParamSpecKwargs
+from typing_extensions import ParamSpecArgs, ParamSpecKwargs
 import gym
 from gym import spaces
 import pandas as pd
@@ -99,54 +99,48 @@ class CarbonEnv(gym.Env):
         # an to action einai to 12 dhladh mhn pareis contract tote
 
         # mapare to action se contract kai speed
-        selected_contract, selected_speed = map_action(action)
+        contract, speed = map_action(action)
 
         print(
-            f"The contract selected is contract_{selected_contract} \
-              and the speed selected for ship {ship_number} is {selected_speed} knots"
+            f"The contract selected is contract_{contract} and the speed selected for ship {ship_number} is {speed} knots"
         )
 
-        # pare ta features tou selected ship apo to ships_tensor
-        selected_ship_tensor = self.ships_tensor[ship_idx, :]
+        # an apofasises na pareis kapoio contract
+        if action != 12:
+            print("Bhka sto if, phra contract ! :D")
 
-        # arxise na kaneis calculate to reward
-        reward = 0
-        print(f"The reward at the start is {reward}")
-        #
+            # arxise na kaneis calculate to reward
+            reward_dict = self.calculate_reward(ship_idx, contract, speed,)
 
-        contract_value = self.contracts_tensor[selected_contract, 9]
-        print(f"The value of the selected contract is {contract_value}")
+            # edw pairneis to reward tou action pou ekanes, to cii pou proekypse apo to trip
+            # kai to poso arghse to ploio na kanei to trip se days
 
-        # total_trip_distance =  ballast + contract distance
-        total_trip_distance = self.find_trip_distance(ship_idx)
-        print(f"The total distance of the trip (ballast + contract distance) is {total_trip_distance}")
-        actual_trip_duration = find_duration(u=selected_speed, distance=total_trip_distance,)
-        print(f"The duration of the trip (ballast + contract distance) in days is {actual_trip_duration}")
+            reward_obtained, cii_attained_after_trip, lateness = reward_dict.values()
 
-        # lateness= contract_duration - actual_trip_duration
-        lateness = self.contracts_tensor[selected_contract, 8] - actual_trip_duration
-        print(
-            f"The lateness in days for the selected contract {selected_contract},\
-              the selected speed {selected_speed}, and selected ship {ship_number} is {lateness}"
-        )
+            # TODO
+            # Xrhsh gia to UPDATE STATE PART
+            # xrhsimopoihse to cii_attained_after_trip gia na ananewseis to cii_attained ton tensora tou selected ship
+            # k
 
-        # cii = cii_threshold - cii_attained
-        cii_threshold = selected_ship_tensor[2]
-        print(f"The cii threshold of the selected ship {ship_number} is {cii_threshold}")
-        cii_attained = find_cii_attained(ship_number=ship_number, speed=selected_speed, distance=total_trip_distance,)
-        print(f"The attained cii for the selected ship {ship_number} is {cii_attained}")
-        cii = cii_threshold - cii_attained
+        else:
+            print("Bhka sto else, eimai no take :(")
+            # bale mhden se ola
+            reward_obtained = cii_attained_after_trip = lateness = 0
 
-        print(f"The reward component regarding the cii is {cii} ")
+        print(f"To reward pou peirame apo to action {action} einai {reward_obtained}")
 
-        reward = contract_value + cii + lateness
+        print(f"To cii pou proekypse apo to action einai {cii_attained_after_trip}")
 
-        print(f"The total reward is contract value {contract_value} + lateness {lateness} + cii {cii} = {reward} ")
+        print(f"To lateness se meres apo to action einai {lateness}")
+
         # update state part
 
-        # bale to cii_attained sto selected_ship_tensor[3]
-        #  dhladh selected_ship_tensor[3] += cii_attained
+        # xrhsimopoihse to cii_attained_after_trip gia na ananewseis to cii_attained feature[3] tou tensora tou selected ship
+        # dhladh selected_ship_tensor[3] += cii_attained
         # den mporei na ginei etsi me += giati o tensoras einai immutable (ftiaxnw kainourio me concat)
+
+        # xrhsimopoihse to lateness gia na ananewseis tis meres pou telika tha einai unavailable to ship sto ship_log
+        # etsi 8a prokuptei kai ship mas
 
         # state = {
         #     "contracts_state": contracts_tensor,
@@ -154,7 +148,7 @@ class CarbonEnv(gym.Env):
         #     "contracts_mask": contracts_mask,
         #     "ships_mask": ships_mask,
         # }
-
+        return reward_dict
         pass
 
     def reset(self):
@@ -191,17 +185,22 @@ class CarbonEnv(gym.Env):
         )
 
         # bale ta ballast distances pisw sto ships df
-        # self.ships =
+        self.ships.loc[:, ["ballast_1", "ballast_2", "ballast_3", "ballast_4"]] = self.ships_tensor[:, -4:].numpy()
 
         # An entity showing which daily contracts were taken (1) and which were not (0)
         # self.contracts_mask = tf.ones(shape=(self.NUM_DAILY_CONTRACTS, 1))
+        # self.contracts_mask = self.contracts_tensor[:,7]
         self.contracts_mask = tf.convert_to_tensor(np.array([[0], [1], [0], [1]]), dtype=tf.float32)
 
-        # An entity showing for how many days each ship is to be reserved
-        # reserve_duration = (balast_distance of that contract + contract_distance) / picked_speed
-        self.ship_log = np.zeros(shape=(self.NUM_SHIPS, 1))
+        # An entity showing for how many days each ship is going to be unavailable due to serving a contract
+        # days_of_unavailability = (balast_distance of that contract + contract_distance) / picked_speed
+        # ship_log = {ship_number:days_of_unavailability}
+        self.ship_log = {1: 0, 2: 0, 3: 0, 4: 0}
 
-        # should stay 1 for as long as this ship is reserved
+        #
+        # to ships_mask tha pairnei 1 gia opoio ship sto ship_log exei days_of_unavailability = 0 alliws tha pairnei 0
+        # arxika epeidh to ship_log exei gia ola ta keys values 0 to ships_mask exei 4 asous
+        # TODO bale ena if pou na bazei 1 sto ships_mask an to ship_log[ship_number] == 0 alliws an ship_log[ship_number]!=0 na bazei 0
         self.ships_mask = tf.ones(shape=(self.NUM_SHIPS, 1))
 
         self.state = {
@@ -404,7 +403,8 @@ class CarbonEnv(gym.Env):
         dm_tensor = tf.convert_to_tensor(dm_array)
         return dm_tensor
 
-    def find_trip_distance(self, ship_idx, contract):
+    def find_trip_distance(self, ship_idx, contract, cp):
+
         """
         `find_trip_distance` calculates the trip distance of a ship serving a contract
 
@@ -413,27 +413,115 @@ class CarbonEnv(gym.Env):
         """
 
         # to contract distance einai to feat[8] tou selected contract tensora
-        selected_port_distance = self.contracts_tensor[contract, 8]
+        selected_contract_distance = self.contracts_tensor[contract, 8]
 
         #
         selected_start_port = self.contracts_tensor[contract, 0]
 
         selected_end_port = self.contracts_tensor[contract, 1]
 
-        print(f"We chose contract {contract}")
-        print(f"The start port of contract {contract} is {selected_start_port}")
-        print(f"The end port of contract {contract} is {selected_end_port}")
-        print(f"The distance between the ports {selected_port_distance}")
+        # print(f"We chose contract {contract}")
+        print(f"To start port tou contract_{contract} einai to {selected_start_port}")
+        print(f"To end port tou contract_{contract} einai to {selected_end_port}")
+        print(f"H apostash metaksy twn dyo autwn port einai {selected_contract_distance} nm")
 
         # analoga me to poio contract dialeksa
         # epilegw to antistoixo ballast apo ton tensora tou selected ship
         # to briskw me contract number mod 4 + 7 pou einai to index pou ksekinane ta ballast features
 
         ballast_feature_idx = contract % 4 + 7
-        print(f"To ballast idx pou epileksame einai to {ballast_feature_idx}")
+        print(
+            f"To ballast_idx pou epileksame einai to ballast_{ballast_feature_idx-7} pou einai to feature {ballast_feature_idx} tou ship_tensor"
+        )
+        print(f"To ploio {ship_idx+1} brisketai sto current port {cp}")
         selected_ballast_distance = self.ships_tensor[ship_idx, ballast_feature_idx]
-        print(f"To ballast distance pou epileksame einai {selected_ballast_distance} nm")
-        total_distance = selected_port_distance + selected_ballast_distance
-        print(f"To synoliko distance einai {selected_port_distance} + {selected_ballast_distance} = {total_distance}")
+        print(
+            f"To ballast distance metaksy current port {cp} kai start port {selected_start_port} prokyptei {selected_ballast_distance} nm"
+        )
+        total_distance = selected_contract_distance + selected_ballast_distance
+        print(
+            f"To synoliko distance einai {selected_contract_distance} nm + {selected_ballast_distance} nm = {total_distance} nm"
+        )
 
         return total_distance
+
+    def calculate_reward(self, ship_idx, contract, speed):
+        """
+        `calculate_reward` calculates the reward produced action.
+
+        Inputs:
+
+        * ship_idx : the index of the ship selected in the loop. ship_idx in [0,1,2,3]
+        * contract : the selected contract that the ship will serve
+        * speed : the selected ship speed with which the contract will be served
+        """
+
+        reward = 0
+
+        ship_number = ship_idx + 1
+
+        # pare ton tensora tou ship pou dialekses mesw tou loop
+        selected_ship_tensor = self.ships_tensor[ship_idx, :]
+
+        # pare to current port apo ton ship tensora
+        cp = selected_ship_tensor[4]
+
+        print(f"To reward sthn arxh einai {reward}")
+        #
+
+        value_component = self.contracts_tensor[contract, 9]
+        print(f"To value tou contract_{contract} einai {value_component}")
+
+        # total_trip_distance =  ballast + contract distance
+        total_trip_distance = self.find_trip_distance(ship_idx, contract, cp)
+        print(f"To total distance tou trip (ballast + contract distance) einai {total_trip_distance} nm")
+        trip_duration_days, trip_duration_hours = find_duration(u=speed, distance=total_trip_distance,)
+        print(f"To duration tou trip (ballast + contract distance) se hours einai {trip_duration_hours}")
+        print(f"To duration tou trip (ballast + contract distance) se days einai {trip_duration_days}")
+
+        # lateness= contract_duration - actual_trip_duration
+        lateness = self.contracts_tensor[contract, 6] - trip_duration_days
+        print(
+            f"To lateness se days gia to selected contract_{contract}, me speed {speed} knots, gia to ship {ship_number} einai {lateness}"
+        )
+        # an arghsa kapoies meres plhrwse kostos 10 monades gia ka8e mera argoporias
+        # alliws krata to thetiko reward epeidh eftases sthn wra sou
+        lateness_cost_per_day = 10
+        lateness_component = lateness * lateness_cost_per_day if lateness < 0 else lateness
+
+        # cii = cii_threshold - cii_attained
+        cii_threshold = selected_ship_tensor[2]
+        cii_attained_till_now = selected_ship_tensor[3]
+        print(f"The cii threshold of the selected ship {ship_number} is {cii_threshold}")
+        cii_attained_current_trip = find_cii_attained(
+            ship_number=ship_number, speed=speed, distance=total_trip_distance,
+        )
+        print(
+            f"The attained cii for the selected ship {ship_number} during the current trip is {cii_attained_current_trip}"
+        )
+
+        # add the cii attained in the current trip to the cii attained until now
+        cii_attained_after_trip = cii_attained_till_now + cii_attained_current_trip
+
+        cii_component = cii_threshold - cii_attained_after_trip
+
+        # TODO elegxos an to cii_component<0 dhladh cii_threshold < cii_attained bale megalo kostos!!!
+
+        # cii_cost an kseperasw to cii_threshold
+        cii_cost = 1000
+        cii_component = cii_component * cii_cost if cii_component < 0 else cii_component
+        print(f"The reward component regarding the cii is {cii_component} ")
+
+        reward = value_component + cii_component + lateness_component
+
+        print(
+            f"The total reward is made up by the value component {value_component} + lateness component {lateness_component} + cii component {cii_component}"
+        )
+        return {
+            "total_reward": reward,
+            "cii_attained_after_trip": cii_attained_after_trip,
+            "lateness": lateness,
+        }
+
+        pass
+

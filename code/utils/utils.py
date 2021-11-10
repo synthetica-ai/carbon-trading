@@ -27,22 +27,25 @@ def find_cii_attained(ship_number, speed, distance):
     """
 
     speed_factors_dict_per_ship_type = {
-        1: (50_000, 0.00085034, 0.15646258),
-        2: (60_000, 0.00757758, 0.03166888),
-        3: (70_000, 0.00735917, 0.08172108),
-        4: (80_000, 0.00735917, 0.08172108),
+        1: (50_000, 0.0008_5034, 0.1564_6258),
+        2: (60_000, 0.0075_7758, 0.0316_6888),
+        3: (70_000, 0.0073_5917, 0.0817_2108),
+        4: (80_000, 0.0073_5917, 0.0817_2108),
     }
     # dwt
     dwt = speed_factors_dict_per_ship_type[ship_number][0]
+    print(f"To dwt einai {dwt}")
 
     # the factor of speed^3
     c3_speed_factor = speed_factors_dict_per_ship_type[ship_number][1]
-
+    print(f"O c3 speed factor einai {c3_speed_factor}")
     # the factor of speed^2
     c2_speed_factor = speed_factors_dict_per_ship_type[ship_number][2]
+    print(f"O c2 speed factor einai {c2_speed_factor}")
 
     # co2 emissions from speed formula
-    co2_emissions = c3_speed_factor * (speed ** 3) + c2_speed_factor * (speed ** 2)
+    co2_emissions = (c3_speed_factor * (speed ** 3)) + (c2_speed_factor * (speed ** 2))
+    print(f"Ta co2 emissions einai {co2_emissions}")
 
     cii_attained = (co2_emissions * 1_000_000) / (dwt * distance)
     return cii_attained
@@ -151,9 +154,9 @@ def find_duration(u, distance):
     """
     `find_duration` finds the duration of a trip with distance `distance` conducted with speed `u` in `days`
     """
-    dt_hours = (distance / u).round()
-    dt_days = (dt_hours / 24).round()
-    return dt_days
+    dt_hours = tf.math.round((distance / u))
+    dt_days = tf.math.round((dt_hours / 24))
+    return dt_days, dt_hours
 
 
 # def find_distance(port_1_number, port_2_number, dm):
