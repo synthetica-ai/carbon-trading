@@ -32,6 +32,8 @@ def find_cii_attained(ship_number, speed, distance):
         3: (70_000, 0.0073_5917, 0.0817_2108),
         4: (80_000, 0.0073_5917, 0.0817_2108),
     }
+
+    print(f"to distance sailed einai {distance}")
     # dwt
     dwt = speed_factors_dict_per_ship_type[ship_number][0]
     print(f"To dwt einai {dwt}")
@@ -47,7 +49,11 @@ def find_cii_attained(ship_number, speed, distance):
     co2_emissions = (c3_speed_factor * (speed ** 3)) + (c2_speed_factor * (speed ** 2))
     print(f"Ta co2 emissions einai {co2_emissions}")
 
-    cii_attained = (co2_emissions * 1_000_000) / (dwt * distance)
+    numerator = co2_emissions * 1_000_000
+    print(f"O ari8mhths einai {numerator}")
+    denomenator = dwt * distance
+    print(f"O paronomasths einai {denomenator}")
+    cii_attained = numerator / denomenator
     return cii_attained
 
 

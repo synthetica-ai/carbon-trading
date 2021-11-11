@@ -13,7 +13,6 @@ from utils.utils import (
     map_action,
     find_duration,
 )
-import random
 
 
 class CarbonEnv(gym.Env):
@@ -81,7 +80,7 @@ class CarbonEnv(gym.Env):
         self.embedding_size = 128
         self.reset()
 
-    def step(self, action, ship_number):
+    def step(self, ship_number, action):
         """
         `step` takes a step into the environment
 
@@ -96,51 +95,20 @@ class CarbonEnv(gym.Env):
         # edw aferw apo to ship_number to 1 gia na parw to epi8umhto ship index
         ship_idx = ship_number - 1
 
-        # an to action einai to 12 dhladh mhn pareis contract tote
-
-        # mapare to action se contract kai speed
-        contract, speed = map_action(action)
-
-        print(
-            f"The contract selected is contract_{contract} and the speed selected for ship {ship_number} is {speed} knots"
-        )
-
-        # an apofasises na pareis kapoio contract
-        if action != 12:
-            print("Bhka sto if, phra contract ! :D")
-
-            # arxise na kaneis calculate to reward
-            reward_dict = self.calculate_reward(ship_idx, contract, speed,)
-
-            # edw pairneis to reward tou action pou ekanes, to cii pou proekypse apo to trip
-            # kai to poso arghse to ploio na kanei to trip se days
-
-            reward_obtained, cii_attained_after_trip, lateness = reward_dict.values()
-
-            # TODO
-            # Xrhsh gia to UPDATE STATE PART
-            # xrhsimopoihse to cii_attained_after_trip gia na ananewseis to cii_attained ton tensora tou selected ship
-            # k
-
-        else:
-            print("Bhka sto else, eimai no take :(")
-            # bale mhden se ola
-            reward_obtained = cii_attained_after_trip = lateness = 0
+        (reward_obtained, cii_attained_total, delay,) = self.calculate_reward(ship_idx, action).values()
 
         print(f"To reward pou peirame apo to action {action} einai {reward_obtained}")
+        print(f"To accumulated cii gia to ship {ship_number} meta to action ginetai {cii_attained_total}")
+        print(f"To delay se meres apo to action einai {delay}")
 
-        print(f"To cii pou proekypse apo to action einai {cii_attained_after_trip}")
-
-        print(f"To lateness se meres apo to action einai {lateness}")
-
-        # update state part
+        # TODO  update state part
 
         # xrhsimopoihse to cii_attained_after_trip gia na ananewseis to cii_attained feature[3] tou tensora tou selected ship
         # dhladh selected_ship_tensor[3] += cii_attained
-        # den mporei na ginei etsi me += giati o tensoras einai immutable (ftiaxnw kainourio me concat)
+        # den mporei na ginei kateu8eian me += giati o tensoras einai immutable (ftiaxnw kainourio tensora kai ton kanw concat me ton prohgoumeno)
 
-        # xrhsimopoihse to lateness gia na ananewseis tis meres pou telika tha einai unavailable to ship sto ship_log
-        # etsi 8a prokuptei kai ship mas
+        # xrhsimopoihse to delay gia na ananewseis tis meres pou telika tha einai unavailable to ship sto ship_log
+        # etsi 8a prokuptei kai ship mask
 
         # state = {
         #     "contracts_state": contracts_tensor,
@@ -148,7 +116,7 @@ class CarbonEnv(gym.Env):
         #     "contracts_mask": contracts_mask,
         #     "ships_mask": ships_mask,
         # }
-        return reward_dict
+
         pass
 
     def reset(self):
@@ -294,7 +262,7 @@ class CarbonEnv(gym.Env):
         # pick distance between ports from df
         dx = con_df["contract_distance"]
 
-        dt_days = find_duration(distance=dx, u=u_picked)
+        dt_days, dt_hours = find_duration(distance=dx, u=u_picked)
 
         # get upper triangle entries of distance matrix
         x = self.dm_df.iloc[:, 1:].to_numpy(dtype=np.int32)
@@ -445,83 +413,136 @@ class CarbonEnv(gym.Env):
 
         return total_distance
 
-    def calculate_reward(self, ship_idx, contract, speed):
+    def calculate_reward(self, ship_idx, action):
         """
-        `calculate_reward` calculates the reward produced action.
+        `calculate_reward` calculates the reward obtained by the action for the selected ship.
 
         Inputs:
 
         * ship_idx : the index of the ship selected in the loop. ship_idx in [0,1,2,3]
-        * contract : the selected contract that the ship will serve
-        * speed : the selected ship speed with which the contract will be served
-        """
+        * action : the action for the selected ship
 
-        reward = 0
+        """
 
         ship_number = ship_idx + 1
 
-        # pare ton tensora tou ship pou dialekses mesw tou loop
-        selected_ship_tensor = self.ships_tensor[ship_idx, :]
-
-        # pare to current port apo ton ship tensora
-        cp = selected_ship_tensor[4]
-
-        print(f"To reward sthn arxh einai {reward}")
-        #
-
-        value_component = self.contracts_tensor[contract, 9]
-        print(f"To value tou contract_{contract} einai {value_component}")
-
-        # total_trip_distance =  ballast + contract distance
-        total_trip_distance = self.find_trip_distance(ship_idx, contract, cp)
-        print(f"To total distance tou trip (ballast + contract distance) einai {total_trip_distance} nm")
-        trip_duration_days, trip_duration_hours = find_duration(u=speed, distance=total_trip_distance,)
-        print(f"To duration tou trip (ballast + contract distance) se hours einai {trip_duration_hours}")
-        print(f"To duration tou trip (ballast + contract distance) se days einai {trip_duration_days}")
-
-        # lateness= contract_duration - actual_trip_duration
-        lateness = self.contracts_tensor[contract, 6] - trip_duration_days
-        print(
-            f"To lateness se days gia to selected contract_{contract}, me speed {speed} knots, gia to ship {ship_number} einai {lateness}"
-        )
-        # an arghsa kapoies meres plhrwse kostos 10 monades gia ka8e mera argoporias
-        # alliws krata to thetiko reward epeidh eftases sthn wra sou
-        lateness_cost_per_day = 10
-        lateness_component = lateness * lateness_cost_per_day if lateness < 0 else lateness
-
-        # cii = cii_threshold - cii_attained
-        cii_threshold = selected_ship_tensor[2]
-        cii_attained_till_now = selected_ship_tensor[3]
-        print(f"The cii threshold of the selected ship {ship_number} is {cii_threshold}")
-        cii_attained_current_trip = find_cii_attained(
-            ship_number=ship_number, speed=speed, distance=total_trip_distance,
-        )
-        print(
-            f"The attained cii for the selected ship {ship_number} during the current trip is {cii_attained_current_trip}"
-        )
-
-        # add the cii attained in the current trip to the cii attained until now
-        cii_attained_after_trip = cii_attained_till_now + cii_attained_current_trip
-
-        cii_component = cii_threshold - cii_attained_after_trip
-
-        # TODO elegxos an to cii_component<0 dhladh cii_threshold < cii_attained bale megalo kostos!!!
-
-        # cii_cost an kseperasw to cii_threshold
-        cii_cost = 1000
-        cii_component = cii_component * cii_cost if cii_component < 0 else cii_component
-        print(f"The reward component regarding the cii is {cii_component} ")
-
-        reward = value_component + cii_component + lateness_component
+        # mapare to action se contract kai speed
+        contract, speed = map_action(action)
 
         print(
-            f"The total reward is made up by the value component {value_component} + lateness component {lateness_component} + cii component {cii_component}"
+            f"The contract selected is contract_{contract} and the speed selected for ship {ship_number} is {speed} knots"
         )
-        return {
-            "total_reward": reward,
-            "cii_attained_after_trip": cii_attained_after_trip,
-            "lateness": lateness,
+
+        # an apofasises na pareis kapoio contract
+        if action != 12:
+            print("Bhka sto if, phra contract ! :D")
+
+            reward_obtained = 0
+
+            # pare ton tensora tou ship pou dialekses mesw tou loop
+            selected_ship_tensor = self.ships_tensor[ship_idx, :]
+
+            # pare to current port apo ton ship tensora
+            cp = selected_ship_tensor[4]
+
+            print(f"To reward sthn arxh einai {reward_obtained}")
+
+            contract_value = self.contracts_tensor[contract, 9]
+
+            print(f"To value tou contract_{contract} einai {contract_value}")
+
+            # total_trip_distance =  ballast + contract distance
+            total_trip_distance = self.find_trip_distance(ship_idx, contract, cp)
+            print(f"To total distance tou trip (ballast + contract distance) einai {total_trip_distance} nm")
+
+            # briskw to duration tou trip se meres kai wres
+            trip_duration_days, trip_duration_hours = find_duration(u=speed, distance=total_trip_distance,)
+            print(f"To duration tou trip (ballast + contract distance) se hours einai {trip_duration_hours}")
+            print(f"To duration tou trip (ballast + contract distance) se days einai {trip_duration_days}")
+
+            # delay= actual_trip_duration - contract_duration
+            delay = trip_duration_days - self.contracts_tensor[contract, 6]
+            if delay > 0:
+                print(f" To ship {ship_number} 8a arghsei {delay} meres")
+            elif delay == 0:
+                print(f"To ship {ship_number} den tha arghsei na")
+            else:
+                print(f"To ship {ship_number} 8a ftasei {-delay} meres nwritera")
+
+            # an arghsa kapoies meres (delay>0) plhrwse kostos 10 monades gia ka8e mera argoporias
+            # alliws krata to thetiko reward (-delay) epeidh eftases sthn wra sou
+            lateness_cost_per_day = -10
+            lateness_reward = delay * lateness_cost_per_day if delay > 0 else -delay
+
+            # cii = cii_threshold - cii_attained
+            cii_threshold = selected_ship_tensor[2]
+
+            # to accumulated cii_attained tou ship mexri twra
+            accumulated_cii_attained_till_now = selected_ship_tensor[3]
+            print(f"The cii threshold of the selected ship {ship_number} is {cii_threshold}")
+
+            # to cii pou parax8hke apo to twrino trip
+            cii_attained_current_trip = find_cii_attained(
+                ship_number=ship_number, speed=speed, distance=total_trip_distance,
+            )
+            print(
+                f"The attained cii for the selected ship {ship_number} during the current trip is {cii_attained_current_trip}"
+            )
+
+            # add the cii attained in the current trip to the cii attained until now
+            accumulated_cii_attained_after_trip = accumulated_cii_attained_till_now + cii_attained_current_trip
+
+            # h diafora tou cii_threshold apo to accumulated cii
+            cii_difference = cii_threshold - accumulated_cii_attained_after_trip
+
+            # an cii_difference > 0 dhladh to ship exei akoma peri8wrio oso afora to cii_threshold tote
+            # dwse cii_reward = cii_difference alliws
+            # an cii_difference < 0 dwse cii_reward = 1000 * cii_difference
+
+            # cii_cost an kseperasw to cii_threshold
+            cii_cost = 1000
+
+            # to reward apo to cii
+            cii_reward = cii_difference if cii_difference > 0 else cii_difference * cii_cost
+            print(f"The reward component regarding the cii is {cii_reward} ")
+
+            reward_obtained = contract_value + cii_reward + lateness_reward
+
+            print(
+                f"The total reward is made up by the contract value {contract_value} + delay reward {lateness_reward} + cii reward {cii_reward}"
+            )
+
+        else:
+
+            print("Bhka sto else, eimai no take :(")
+
+            # pare ton tensora tou ship pou dialekses mesw tou loop
+            selected_ship_tensor = self.ships_tensor[ship_idx, :]
+
+            # to cii_attained tou ship mexri twra
+            accumulated_cii_attained_till_now = selected_ship_tensor[3]
+
+            # afou den egine trip, to cii pou parax8hke einai 0
+            cii_attained_current_trip = 0
+
+            print(
+                f"The attained cii for the selected ship {ship_number} during the current trip is {cii_attained_current_trip}"
+            )
+
+            # to accumulated cii_attained_after_trip praktika tha einai to accumulated cii_attained_till_now + 0
+            accumulated_cii_attained_after_trip = accumulated_cii_attained_till_now + cii_attained_current_trip
+
+            # to delay balto 0
+            delay = 0
+
+            # bale ena mikro arnhtiko reward epeidh den phres tipota
+            reward_obtained = -1
+
+        # eite pareis contract eite oxi orise to reward_dict
+        reward_dict = {
+            "reward_obtained": reward_obtained,
+            "accumulated_cii_attained_after_trip": accumulated_cii_attained_after_trip,
+            "delay": delay,
         }
 
-        pass
-
+        return reward_dict
