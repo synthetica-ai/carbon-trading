@@ -1,3 +1,4 @@
+from re import S
 from typing_extensions import ParamSpecArgs, ParamSpecKwargs
 import gym
 from gym import spaces
@@ -24,12 +25,7 @@ class CarbonEnv(gym.Env):
     """
 
     def __init__(
-        self,
-        data_dict={
-            "ships_path": "data/fleet_small.csv",
-            "ports_path": "data/ports_10.csv",
-            "dm_path": "data/distance_matrix.csv",
-        },
+        self, data_dict={"ships_path": "data/fleet_small.csv", "ports_path": "data/ports_10.csv", "dm_path": "data/distance_matrix.csv",},
     ):
         super().__init__()
 
@@ -63,20 +59,15 @@ class CarbonEnv(gym.Env):
             "ships_mask": tf.zeros(shape=(self.NUM_SHIPS, 1)),
         }
         self.observation_space_concatenated = tf.concat(
-            (
-                self.observation_space["contracts_state"],
-                self.observation_space["ships_state"],
-                self.observation_space["contracts_mask"],
-                self.observation_space["ships_mask"],
-            ),
-            axis=1,
+            (self.observation_space["contracts_state"], self.observation_space["ships_state"], self.observation_space["contracts_mask"], self.observation_space["ships_mask"]), axis=1,
         )
-        self.observation_space_dim = self.observation_space_concatenated.shape
-        self.observation_space_dim = self.observation_space_dim.as_list()
+
+        self.observation_space_dim = self.observation_space_concatenated.shape.as_list()
+        # self.observation_space_dim = self.observation_space_dim.as_list()
         self.action_space = {"actions": tf.zeros(shape=((self.NUM_DAILY_CONTRACTS * self.NUM_SPEEDS) + 1, 1,))}
         # self.action_space = {"actions": tf.zeros(shape=(self.NUM_SPEEDS + 1, 1))}
-        self.action_space_dim = self.action_space["actions"].shape
-        self.action_space_dim = self.action_space_dim.as_list()
+        self.action_space_dim = self.action_space["actions"].shape.as_list()
+        # self.action_space_dim = self.action_space_dim.as_list()
         self.embedding_size = 128
         self.reset()
 
@@ -95,13 +86,13 @@ class CarbonEnv(gym.Env):
         # edw aferw apo to ship_number to 1 gia na parw to epi8umhto ship index
         ship_idx = ship_number - 1
 
-        (reward_obtained, cii_attained_total, delay,) = self.calculate_reward(ship_idx, action).values()
+        reward_obtained, cii_attained_total, delay_in_days = self.calculate_reward(ship_idx, action).values()
 
-        print(f"To reward pou peirame apo to action {action} einai {reward_obtained}")
-        print(f"To accumulated cii gia to ship {ship_number} meta to action ginetai {cii_attained_total}")
-        print(f"To delay se meres apo to action einai {delay}")
-
-        # TODO  update state part
+        # region
+        # print(f"To reward pou peirame apo to action {action} einai {reward_obtained}")
+        # print(f"To accumulated cii gia to ship {ship_number} meta to action ginetai {cii_attained_total}")
+        # print(f"To delay se meres apo to action einai {delay}")
+        # endregion
 
         # xrhsimopoihse to cii_attained_after_trip gia na ananewseis to cii_attained feature[3] tou tensora tou selected ship
         # dhladh selected_ship_tensor[3] += cii_attained
@@ -109,15 +100,22 @@ class CarbonEnv(gym.Env):
 
         # xrhsimopoihse to delay gia na ananewseis tis meres pou telika tha einai unavailable to ship sto ship_log
         # etsi 8a prokuptei kai ship mask
+        if action != 12:
+            self.update_state(ship_idx, action, cii_attained_total, delay_in_days)
+            print("ekana update to state")
+            print("tsekare contract_tensor,contract_mask,ship_tensor,ship_mask")
+        else:
+            print("ho")
 
-        # state = {
-        #     "contracts_state": contracts_tensor,
-        #     "ships_state": ships_tensor,
-        #     "contracts_mask": contracts_mask,
-        #     "ships_mask": ships_mask,
-        # }
+        state_dict = {
+            "contracts_state": self.contracts_tensor,
+            "ships_state": self.ships_tensor,
+            "contracts_mask": self.contracts_mask,
+            "ships_mask": self.ships_mask,
+        }
 
-        pass
+        state = tf.concat()
+        return state, reward_obtained, done
 
     def reset(self):
         """
@@ -148,9 +146,7 @@ class CarbonEnv(gym.Env):
         (self.contracts_df, self.contracts_tensor,) = self.create_contracts_tensor()
 
         # Add the ballast distances to the ships tensor
-        self.ships_tensor = func_ballast(
-            con_tensor=self.contracts_tensor, ships_tensor=self.ships_tensor, dm_tensor=self.dm_tensor,
-        )
+        self.ships_tensor = func_ballast(con_tensor=self.contracts_tensor, ships_tensor=self.ships_tensor, dm_tensor=self.dm_tensor,)
 
         # bale ta ballast distances pisw sto ships df
         self.ships.loc[:, ["ballast_1", "ballast_2", "ballast_3", "ballast_4"]] = self.ships_tensor[:, -4:].numpy()
@@ -163,7 +159,7 @@ class CarbonEnv(gym.Env):
         # An entity showing for how many days each ship is going to be unavailable due to serving a contract
         # days_of_unavailability = (balast_distance of that contract + contract_distance) / picked_speed
         # ship_log = {ship_number:days_of_unavailability}
-        self.ship_log = {1: 0, 2: 0, 3: 0, 4: 0}
+        self.ships_log = {1: 0, 2: 0, 3: 0, 4: 0}
 
         #
         # to ships_mask tha pairnei 1 gia opoio ship sto ship_log exei days_of_unavailability = 0 alliws tha pairnei 0
@@ -187,18 +183,7 @@ class CarbonEnv(gym.Env):
         # auto bgalto meta
         np.random.seed(7)
         con_df = pd.DataFrame(
-            columns=[
-                "start_port_number",
-                "end_port_number",
-                "contract_type",
-                "start_day",
-                "end_day",
-                "cargo_size",
-                "contract_duration",
-                "contract_availability",
-                "contract_distance",
-                "value",
-            ]
+            columns=["start_port_number", "end_port_number", "contract_type", "start_day", "end_day", "cargo_size", "contract_duration", "contract_availability", "contract_distance", "value",]
         )
 
         ship_types = np.array(["supramax", "ultramax", "panamax", "kamsarmax"])
@@ -210,11 +195,7 @@ class CarbonEnv(gym.Env):
         same_ports = con_df["start_port_number"] == con_df["end_port_number"]
         # check that start and end ports are different
         while sum(same_ports) != 0:
-            con_df["end_port_number"] = np.where(
-                same_ports,
-                np.random.randint(low=1, high=self.NUM_PORTS + 1, size=same_ports.shape,),
-                con_df["end_port_number"],
-            )
+            con_df["end_port_number"] = np.where(same_ports, np.random.randint(low=1, high=self.NUM_PORTS + 1, size=same_ports.shape,), con_df["end_port_number"],)
             same_ports = con_df["start_port_number"] == con_df["end_port_number"]
 
         con_df["start_day"] = self.day
@@ -283,9 +264,7 @@ class CarbonEnv(gym.Env):
         con_df["end_day"] = con_df["start_day"] + con_df["contract_duration"] - 1
 
         # add contract value : einai analogo tou (kg * miles) / time at sea
-        con_df["value"] = round(
-            con_df["cargo_size"] * (con_df["contract_distance"] / (con_df["contract_duration"] * 1_000_000))
-        )
+        con_df["value"] = round(con_df["cargo_size"] * (con_df["contract_distance"] / (con_df["contract_duration"] * 1_000_000)))
 
         # set contract availability to 1 for each contract
         con_df["contract_availability"] = np.ones(shape=(self.NUM_DAILY_CONTRACTS))
@@ -297,18 +276,7 @@ class CarbonEnv(gym.Env):
         `create_contracts_tensor` creates a tensor out of the contracts dataframe
         """
         empty = pd.DataFrame(
-            columns=[
-                "start_port_number",
-                "end_port_number",
-                "contract_type",
-                "start_day",
-                "end_day",
-                "cargo_size",
-                "contract_duration",
-                "contract_availability",
-                "contract_distance",
-                "value",
-            ]
+            columns=["start_port_number", "end_port_number", "contract_type", "start_day", "end_day", "cargo_size", "contract_duration", "contract_availability", "contract_distance", "value",]
         )
         contracts_df = empty.copy()
         x = self.create_contracts()
@@ -398,22 +366,17 @@ class CarbonEnv(gym.Env):
         # to briskw me contract number mod 4 + 7 pou einai to index pou ksekinane ta ballast features
 
         ballast_feature_idx = contract % 4 + 7
-        print(
-            f"To ballast_idx pou epileksame einai to ballast_{ballast_feature_idx-7} pou einai to feature {ballast_feature_idx} tou ship_tensor"
-        )
+        print(f"To ballast_idx pou epileksame einai to ballast_{ballast_feature_idx-7} pou einai to feature {ballast_feature_idx} tou ship_tensor")
         print(f"To ploio {ship_idx+1} brisketai sto current port {cp}")
         selected_ballast_distance = self.ships_tensor[ship_idx, ballast_feature_idx]
-        print(
-            f"To ballast distance metaksy current port {cp} kai start port {selected_start_port} prokyptei {selected_ballast_distance} nm"
-        )
+        print(f"To ballast distance metaksy current port {cp} kai start port {selected_start_port} prokyptei {selected_ballast_distance} nm")
         total_distance = selected_contract_distance + selected_ballast_distance
-        print(
-            f"To synoliko distance einai {selected_contract_distance} nm + {selected_ballast_distance} nm = {total_distance} nm"
-        )
+        print(f"To synoliko distance einai {selected_contract_distance} nm + {selected_ballast_distance} nm = {total_distance} nm")
 
         return total_distance
 
     def calculate_reward(self, ship_idx, action):
+
         """
         `calculate_reward` calculates the reward obtained by the action for the selected ship.
 
@@ -429,9 +392,7 @@ class CarbonEnv(gym.Env):
         # mapare to action se contract kai speed
         contract, speed = map_action(action)
 
-        print(
-            f"The contract selected is contract_{contract} and the speed selected for ship {ship_number} is {speed} knots"
-        )
+        print(f"The contract selected is contract_{contract} and the speed selected for ship {ship_number} is {speed} knots")
 
         # an apofasises na pareis kapoio contract
         if action != 12:
@@ -449,16 +410,16 @@ class CarbonEnv(gym.Env):
 
             contract_value = self.contracts_tensor[contract, 9]
 
-            print(f"To value tou contract_{contract} einai {contract_value}")
+            # print(f"To value tou contract_{contract} einai {contract_value}")
 
             # total_trip_distance =  ballast + contract distance
             total_trip_distance = self.find_trip_distance(ship_idx, contract, cp)
-            print(f"To total distance tou trip (ballast + contract distance) einai {total_trip_distance} nm")
+            # print(f"To total distance tou trip (ballast + contract distance) einai {total_trip_distance} nm")
 
             # briskw to duration tou trip se meres kai wres
             trip_duration_days, trip_duration_hours = find_duration(u=speed, distance=total_trip_distance,)
-            print(f"To duration tou trip (ballast + contract distance) se hours einai {trip_duration_hours}")
-            print(f"To duration tou trip (ballast + contract distance) se days einai {trip_duration_days}")
+            # print(f"To duration tou trip (ballast + contract distance) se hours einai {trip_duration_hours}")
+            # print(f"To duration tou trip (ballast + contract distance) se days einai {trip_duration_days}")
 
             # delay= actual_trip_duration - contract_duration
             delay = trip_duration_days - self.contracts_tensor[contract, 6]
@@ -471,23 +432,20 @@ class CarbonEnv(gym.Env):
 
             # an arghsa kapoies meres (delay>0) plhrwse kostos 10 monades gia ka8e mera argoporias
             # alliws krata to thetiko reward (-delay) epeidh eftases sthn wra sou
-            lateness_cost_per_day = -10
-            lateness_reward = delay * lateness_cost_per_day if delay > 0 else -delay
+            delay_cost_per_day = -10
+            delay_reward = delay * delay_cost_per_day if delay > 0 else -delay
 
             # cii = cii_threshold - cii_attained
             cii_threshold = selected_ship_tensor[2]
 
             # to accumulated cii_attained tou ship mexri twra
             accumulated_cii_attained_till_now = selected_ship_tensor[3]
-            print(f"The cii threshold of the selected ship {ship_number} is {cii_threshold}")
+            # print(f"The cii threshold of the selected ship {ship_number} is {cii_threshold}")
 
             # to cii pou parax8hke apo to twrino trip
-            cii_attained_current_trip = find_cii_attained(
-                ship_number=ship_number, speed=speed, distance=total_trip_distance,
-            )
-            print(
-                f"The attained cii for the selected ship {ship_number} during the current trip is {cii_attained_current_trip}"
-            )
+            cii_attained_current_trip = find_cii_attained(ship_number=ship_number, speed=speed, distance=total_trip_distance,)
+
+            # print(f"The attained cii for the selected ship {ship_number} during the current trip is {cii_attained_current_trip}")
 
             # add the cii attained in the current trip to the cii attained until now
             accumulated_cii_attained_after_trip = accumulated_cii_attained_till_now + cii_attained_current_trip
@@ -504,45 +462,198 @@ class CarbonEnv(gym.Env):
 
             # to reward apo to cii
             cii_reward = cii_difference if cii_difference > 0 else cii_difference * cii_cost
-            print(f"The reward component regarding the cii is {cii_reward} ")
+            # print(f"The reward component regarding the cii is {cii_reward} ")
 
-            reward_obtained = contract_value + cii_reward + lateness_reward
+            reward_obtained = contract_value + cii_reward + delay_reward
 
-            print(
-                f"The total reward is made up by the contract value {contract_value} + delay reward {lateness_reward} + cii reward {cii_reward}"
-            )
+            print(f"The total reward is made up by the contract value {contract_value}")
+            print(f"The delay reward is {delay_reward}")
+            print(f"The cii reward is {cii_reward}")
 
         else:
-
+            # TODO allakse thn calculated_rewards gia na fernei pisw mono to reward oxi ta delays klp
             print("Bhka sto else, eimai no take :(")
+            # an den phra conract
 
-            # pare ton tensora tou ship pou dialekses mesw tou loop
+            # region
+
+            # # pare ton tensora tou ship pou dialekses mesw tou loop
             selected_ship_tensor = self.ships_tensor[ship_idx, :]
 
-            # to cii_attained tou ship mexri twra
+            # # to cii_attained tou ship mexri twra
             accumulated_cii_attained_till_now = selected_ship_tensor[3]
 
-            # afou den egine trip, to cii pou parax8hke einai 0
-            cii_attained_current_trip = 0
+            # # to accumulated cii_attained_after_trip praktika tha einai to idio me prin to accumulated cii_attained_till_now + 0
+            accumulated_cii_attained_after_trip = accumulated_cii_attained_till_now + 0
 
-            print(
-                f"The attained cii for the selected ship {ship_number} during the current trip is {cii_attained_current_trip}"
-            )
-
-            # to accumulated cii_attained_after_trip praktika tha einai to accumulated cii_attained_till_now + 0
-            accumulated_cii_attained_after_trip = accumulated_cii_attained_till_now + cii_attained_current_trip
+            # endregion
 
             # to delay balto 0
+
             delay = 0
 
             # bale ena mikro arnhtiko reward epeidh den phres tipota
             reward_obtained = -1
 
         # eite pareis contract eite oxi orise to reward_dict
-        reward_dict = {
-            "reward_obtained": reward_obtained,
-            "accumulated_cii_attained_after_trip": accumulated_cii_attained_after_trip,
-            "delay": delay,
-        }
+        reward_dict = {"reward_obtained": reward_obtained, "accumulated_cii_attained_after_trip": accumulated_cii_attained_after_trip, "delay_in_days": delay}
 
         return reward_dict
+
+    def update_state(self, ship_idx, action, cii_attained, delay):
+
+        """
+        `update_state` updates the environment state based on the `action` taken
+        """
+        ship_number = ship_idx + 1
+
+        # an phres contract
+        if action != 12:
+
+            # kane map to action gia na breis poio contract kai poio speed par8hke
+            contract, speed = map_action(action)
+
+            # region contracts state
+
+            contract_updates = self.update_contract_tensor(contract)
+
+            contract_updates = tf.reshape(contract_updates, shape=(1, contract_updates.shape[0]))
+
+            indices_con = tf.constant([[contract]])
+
+            contract_tensors = self.contracts_tensor
+
+            self.contracts_tensor = tf.tensor_scatter_nd_update(contract_tensors, indices_con, contract_updates)
+
+            # endregion
+
+            # region contracts mask
+
+            # to contracts mask ginetai h sthlh contract_availability tou contracts tensora
+
+            self.contracts_mask = self.contracts_tensor[:, 7]
+
+            # endregion
+
+            # region ships state
+            cii_attained_total = cii_attained
+            print(cii_attained_total)
+
+            ship_updates = self.update_ship_tensor(ship_idx, contract, speed, cii_attained_total)
+
+            ship_updates = tf.reshape(ship_updates, shape=(1, ship_updates.shape[0]))
+
+            indices_ship = tf.constant([[ship_idx]])
+
+            ships_tensors = self.ships_tensor
+
+            self.ships_tensor = tf.tensor_scatter_nd_update(ships_tensors, indices_ship, ship_updates)
+            # endregion
+
+            # region ships_mask
+
+            # to contract mask ginetai h sthlh ship_availability tou ships tensora
+            self.ships_mask = self.ships_tensor[:, 6]
+            # endregion
+
+            # region ships_log
+
+            self.ships_log[ship_number] = delay
+
+            # endregion
+
+        else:
+            # an den phres contract action==12
+
+            # to state den allazei
+            print("Den phra kapoio contract opote nothing changed")
+
+        pass
+
+    def update_contract_tensor(self, contract):
+        """
+        `update_contract_tensor` updates the `contract_availability` feature of the selected contract to 0
+        to signal that this contract became unavailable
+
+        Inputs:
+
+        * `contract`: the selected contract
+
+        Outputs:
+
+        * `output`: the tensor of the selected contract with 1 in the `contract_availability` field
+        """
+
+        # pare ton tensora tou selected contract
+        selected_contract_tensor = tf.cast(self.contracts_tensor[contract, :], tf.float32)
+
+        # thelw na balw 0 sto contract_availability
+        inplace_array = np.array([0])
+
+        # ftiaxnw enan array me 0 kai 1 stis 8eseis pou 8elw na allaksw (edw h thesh 7 tou contract_availability feature)
+        # indices_array = np.array([0,0,0,0,0,0,0,1,0,0])
+        indices_array = np.zeros(10)
+        indices_array[7] = 1
+
+        # pairnw to index tou feature pou thelw na allaksw se morfh tensora (contract_availability)
+        indices = tf.cast(tf.where(tf.equal(indices_array, 1)), tf.int32)
+
+        # ftiaxnw enan scattered array me tis inplace times (1) sta antistoixa feature indices pou thelw na allaksw (7)
+        scatter = tf.scatter_nd(indices, inplace_array, shape=tf.shape(selected_contract_tensor))
+
+        # o inverse_mask einai o logikos antistrofos tou indices_array
+        inverse_mask = tf.cast(tf.math.logical_not(indices_array), tf.float32)
+
+        # selected_contract_tensor me contract_availability na einai 1
+        input_array_zero_out = tf.multiply(inverse_mask, selected_contract_tensor)
+
+        # selected_contract_tensor me contract_availability na einai 0
+        output = tf.add(input_array_zero_out, tf.cast(scatter, tf.float32))
+
+        output = tf.cast(output, tf.float32)
+
+        return output
+
+    def update_ship_tensor(self, ship_idx, contract, speed, cii_attained):
+        """
+
+        """
+
+        # pare ton tensora tou selected ship
+        selected_ship_tensor = tf.cast(self.ships_tensor[ship_idx, :], tf.float32)
+
+        # pare ton tensora tou selected contract
+        selected_contract_tensor = self.contracts_tensor[contract, :]
+
+        # thelw na balw tis ekshs times
+        ship_availability = 0
+        new_current_port = selected_contract_tensor[1].numpy()
+        current_speed = speed
+        new_cii_attained = cii_attained
+
+        #
+        inplace_array = np.array([new_cii_attained, new_current_port, current_speed, ship_availability])
+
+        # ftiaxnw enan array me 0 kai 1 stis 8eseis pou 8elw na allaksw 8eseis [3,4,5,6]
+        # indices_array = np.array([0,0,0,0,0,0,0,1,0,0])
+        indices_array = np.zeros(11)
+        indices_array[[3, 4, 5, 6]] = 1
+
+        # pairnw ta indices twn features pou thelw na allaksw se morfh tensora (cii_attained,current_port,current_speed,ship_availability)
+        indices = tf.cast(tf.where(tf.equal(indices_array, 1)), tf.int32)
+
+        # ftiaxnw enan scattered array me tis inplace times sta antistoixa feature indices pou thelw na allaksw
+        scatter = tf.scatter_nd(indices, inplace_array, shape=tf.shape(selected_ship_tensor))
+
+        # o inverse_mask einai o logikos antistrofos tou indices_array
+        inverse_mask = tf.cast(tf.math.logical_not(indices_array), tf.float32)
+
+        #
+        input_array_zero_out = tf.multiply(inverse_mask, selected_ship_tensor)
+
+        # o ananewmenos selected ship tensor me tis times pou 8elw
+        output = tf.add(input_array_zero_out, tf.cast(scatter, tf.float32))
+
+        output = tf.cast(output, tf.float32)
+
+        return output
