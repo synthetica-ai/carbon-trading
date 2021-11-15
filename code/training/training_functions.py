@@ -24,8 +24,9 @@ class PolicyGradient(object):
         self.env = env
         self.batch_size = self.env.batch_size
         # to observation shape einai 4, 10+11+1+1 ? 10=contracts_feats,11=fleet_feats,1=contacts_mask_feats,1=fleet_mask_feats
-        self.observation_dim = self.env.observation_space_dim
-        self.action_dim = self.env.action_space_dim
+        # self.observation_dim = self.env.observation_space_dim
+        # self.action_dim = self.env.action_space_dim[0]
+        self.action_dim = 13
         self.gamma = 0.99
         self.num_iterations = num_iterations
         self.max_ep_len = max_ep_len
@@ -49,9 +50,11 @@ class PolicyGradient(object):
             for step in range(self.max_ep_len):
                 # edw kapou prepei na looparw panw sta available ships
 
+                # TODO LOOPARE PANW SE AVAILABLE SHIPS
+                ship_number = 1
                 states.append(state)
                 action = self.policy_net.sample_action(state)
-                state, reward, done, _ = env.step(action)
+                state, reward, done, _ = env.step(ship_number, action)
                 actions.append(action)
                 rewards.append(reward)
                 episode_reward += reward
@@ -131,7 +134,7 @@ class PolicyGradient(object):
         return avg_reward
 
 
-# ##
+# region
 # def train(validation_dataset,
 #             params,
 #             config):
@@ -272,3 +275,5 @@ class PolicyGradient(object):
 #         print(colored(f"Epoch profiling in minutes-- Total epoch :{epoch_time}, Train datagen : {train_datagen_time}, baseline eval : {baseline_eval_time}",'yellow'))
 
 #     return model_tf, best_cost, distance_cost, earliness_cost, tardiness_cost,cost_, distance_cost_, earliness_cost_, tardiness_cost_
+# endregion
+

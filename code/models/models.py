@@ -50,12 +50,8 @@ class CarbonModel(tf.keras.Model):
         self.dense2 = tf.keras.layers.Dense(64, activation="relu", name="dense_layer_2")
         self.dense3 = tf.keras.layers.Dense(128, activation="relu", name="dense_layer_3")
         self.dense4 = tf.keras.layers.Dense(64, activation="relu", name="dense_layer_4")
-        self.embedding_layer_1 = tf.keras.layers.Dense(
-            self.embedding_size, activation="relu", name="embdedding_layer_1"
-        )
-        self.embedding_layer_2 = tf.keras.layers.Dense(
-            self.embedding_size, activation="relu", name="embdedding_layer_2"
-        )
+        self.embedding_layer_1 = tf.keras.layers.Dense(self.embedding_size, activation="relu", name="embdedding_layer_1")
+        self.embedding_layer_2 = tf.keras.layers.Dense(self.embedding_size, activation="relu", name="embdedding_layer_2")
         self.context_layer = tf.keras.layers.Dense(64, activation="relu", name="context_layer")
         self.output_layer = tf.keras.layers.Dense(self.output_size, activation="linear", name="output_layer")
 
@@ -94,60 +90,74 @@ class CarbonModel(tf.keras.Model):
         # context = tf.expand_dims(context, axis=0)
         # print(f"To shape tou context einai {context.shape}")
         logits = self.output_layer(context)
-        # reduce the logits with the mean to get a 13,1 vector anti gia 4,13
+        # reduce the logits with the mean gia na parw ena 13, vector anti gia 4,13
         logits = tf.math.reduce_mean(logits, axis=0)
-        logits = tf.expand_dims(logits, axis=1)
-
-        # print(f"To shape twn logits prepei na einai (13, 1) kai einai {logits.shape}")
+        # print(f"to shape twn logits einai {logits.shape}")
+        # print(f"makari na einai (13,)")
 
         if self.policynet_flag:
 
-            # an exw dialeksh to policynet bale maska
+            # an exw dialeksei to policynet bale maska
             # opou h maska twn contracts einai 0 bale -np.Infinity
-            # h actions_boolean_mask exei dimension
-            # print("bhka sto if")
-            # print("wra na tsekarw tis boolean masks")
+
+            # contracts_bm shape prepei na einai (4,1)
+            # print("tsekarw an tha bw sto if")
+
+            if self.contracts_mask.shape.as_list() != [4, 1]:
+                self.contracts_mask = tf.reshape(self.contracts_mask, shape=[4, 1])
+                # print(f"Bhka sto if, h contracts_mask exei shape {self.contracts_mask.shape.as_list()}")
+
+            # 4,1
             contracts_bm = tf.equal(self.contracts_mask, 0)
-            # print(f"to contracts bm einai {contracts_bm}")
-            # print(f"to shape tou contracts bm einai {contracts_bm.shape}")
+            # print(f"contracts_bm shape {contracts_bm.shape}")
+
+            # TODO skaei edw epeidh yparxei miss match metaksy contracts_bm pou exei shape 4 kai kai twn tf.constant False kai True pou exoun 3
+            # tsekare kai contracts_mask kai bgale kai ta seeds
+
+            # shape 4,3
             actions_bm = tf.where(contracts_bm, tf.repeat(tf.constant(False), 3), tf.repeat(tf.constant(True), 3))
-            # print(f"to actions bm einai {actions_bm}")
-            # print(f"to shape tou actions bm einai {actions_bm.shape}")
+            # print(f"actions_bm shape {actions_bm.shape}")
+
+            # shape 12,
             actions_bm = tf.reshape(actions_bm, [-1])
-            # print(f"ekana flatten thn bm tou actions")
-            # print(f"to actions bm einai {actions_bm}")
-            # print(f"to shape tou actions bm einai {actions_bm.shape}")
+            # print(f"actions_bm shape {actions_bm.shape}")
 
+            # shape 12,1
             actions_bm = tf.expand_dims(actions_bm, axis=1)
-            # print(f"ebala mia akoma diastash sthn bm tou actions")
-            # print(f"to actions bm einai {actions_bm}")
-            # print(f"to shape tou actions bm einai {actions_bm.shape}")
-            # bazw ena teleutaio true gia to 13 action tou select nothing
-            actions_bm = tf.concat((actions_bm, tf.constant(True, shape=(1, 1))), axis=0)
-            # print(f"ebala ena teleutaio true sth bm tou actions")
-            # print(f"to actions bm einai {actions_bm}")
-            # print(f"to shape tou actions bm einai {actions_bm.shape}")
+            # print(f"actions_bm shape {actions_bm.shape}")
 
+            # bazw ena teleutaio true gia to 13 action tou select nothing
+            # shape 13,1
+            actions_bm = tf.concat((actions_bm, tf.constant(True, shape=(1, 1))), axis=0)
+            # print(f"actions_bm shape {actions_bm.shape}")
+
+            # shape 13
+            actions_bm = tf.reshape(actions_bm, [-1])
+            # print(f"actions_bm shape {actions_bm.shape}")
+
+            # shape 13
             logits = tf.where(actions_bm, logits, float("-inf"))
+            # print(f"logits shape {logits.shape}")
+
+            # shape 13,1
+            # logits = tf.expand_dims(logits, axis=1)
+
             # print(f"ta logits einai {logits}")
-            # if logits.shape.as_list() == [13, 1]:
-            #     print(f"Success epitelous ta logits einai {logits.shape}")
+            # print(f"Success epitelous ta logits einai {logits.shape}")
 
         return logits
 
 
-# Code version 1
-
-# Baseline or ValueNet
+# Baseline - ValueNet
 class BaselineNet(object):
     """
     `BasileNet` takes a state as input and outputs the value of that state.
     The value of the state is actually the expected return of the input state
     """
 
-    def __init__(self, embedding_size):
+    def __init__(self, embedding_size, output_size):
         self.embedding_size = embedding_size
-        self.baseline_model = CarbonModel(embedding_size=self.embedding_size, output_size=1, policynet_flag=False)
+        self.baseline_model = CarbonModel(embedding_size=self.embedding_size, output_size=output_size, policynet_flag=False)
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=3e-2)
 
     def forward(self, state_dict):
@@ -180,9 +190,7 @@ class PolicyNet(object):
     def __init__(self, embedding_size, output_size):
         self.embedding_size = embedding_size
         self.output_size = output_size
-        self.policy_model = CarbonModel(
-            embedding_size=self.embedding_size, output_size=self.output_size, policynet_flag=True
-        )
+        self.policy_model = CarbonModel(embedding_size=self.embedding_size, output_size=self.output_size, policynet_flag=True)
 
     def action_distribution(self, state_dict):
         logits = self.policy_model(state_dict)

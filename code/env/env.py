@@ -81,25 +81,19 @@ class CarbonEnv(gym.Env):
         * done: A flag signaling if the game ended
         * info : A dict useful for debugging
         """
-        ### Prosoxh!!!!
+
         # to ship_number einai [1,2,3,4] den ksekinaei apo to 0!
         # edw aferw apo to ship_number to 1 gia na parw to epi8umhto ship index
         ship_idx = ship_number - 1
 
         reward_obtained, cii_attained_total, delay_in_days = self.calculate_reward(ship_idx, action).values()
 
-        # region
+        # region kapoia prints
         # print(f"To reward pou peirame apo to action {action} einai {reward_obtained}")
         # print(f"To accumulated cii gia to ship {ship_number} meta to action ginetai {cii_attained_total}")
         # print(f"To delay se meres apo to action einai {delay}")
         # endregion
 
-        # xrhsimopoihse to cii_attained_after_trip gia na ananewseis to cii_attained feature[3] tou tensora tou selected ship
-        # dhladh selected_ship_tensor[3] += cii_attained
-        # den mporei na ginei kateu8eian me += giati o tensoras einai immutable (ftiaxnw kainourio tensora kai ton kanw concat me ton prohgoumeno)
-
-        # xrhsimopoihse to delay gia na ananewseis tis meres pou telika tha einai unavailable to ship sto ship_log
-        # etsi 8a prokuptei kai ship mask
         if action != 12:
             self.update_state(ship_idx, action, cii_attained_total, delay_in_days)
             print("ekana update to state")
@@ -114,8 +108,10 @@ class CarbonEnv(gym.Env):
             "ships_mask": self.ships_mask,
         }
 
-        state = tf.concat()
-        return state, reward_obtained, done
+        # mallon den xreaizetai na kanw concat
+        # state = tf.concat()
+
+        return state_dict, reward_obtained, False, {}
 
     def reset(self):
         """
@@ -156,15 +152,16 @@ class CarbonEnv(gym.Env):
         # self.contracts_mask = self.contracts_tensor[:,7]
         self.contracts_mask = tf.convert_to_tensor(np.array([[0], [1], [0], [1]]), dtype=tf.float32)
 
-        # An entity showing for how many days each ship is going to be unavailable due to serving a contract
-        # days_of_unavailability = (balast_distance of that contract + contract_distance) / picked_speed
-        # ship_log = {ship_number:days_of_unavailability}
+        # ships_log = {ship_number:days_of_unavailability}
         self.ships_log = {1: 0, 2: 0, 3: 0, 4: 0}
 
-        #
+        # bazw ola ta ships me bash to ship_number tous na einai available se mia lista
+        self.available_ships_list = [1, 2, 3, 4]
+
         # to ships_mask tha pairnei 1 gia opoio ship sto ship_log exei days_of_unavailability = 0 alliws tha pairnei 0
         # arxika epeidh to ship_log exei gia ola ta keys values 0 to ships_mask exei 4 asous
-        # TODO bale ena if pou na bazei 1 sto ships_mask an to ship_log[ship_number] == 0 alliws an ship_log[ship_number]!=0 na bazei 0
+        # TODO mesa sto step
+        # bale ena if pou na bazei 1 sto ships_mask an to ship_log[ship_number] == 0 alliws an ship_log[ship_number]!=0 na bazei 0
         self.ships_mask = tf.ones(shape=(self.NUM_SHIPS, 1))
 
         self.state = {
@@ -513,8 +510,6 @@ class CarbonEnv(gym.Env):
             # kane map to action gia na breis poio contract kai poio speed par8hke
             contract, speed = map_action(action)
 
-            # region contracts state
-
             contract_updates = self.update_contract_tensor(contract)
 
             contract_updates = tf.reshape(contract_updates, shape=(1, contract_updates.shape[0]))
@@ -525,19 +520,10 @@ class CarbonEnv(gym.Env):
 
             self.contracts_tensor = tf.tensor_scatter_nd_update(contract_tensors, indices_con, contract_updates)
 
-            # endregion
-
-            # region contracts mask
-
-            # to contracts mask ginetai h sthlh contract_availability tou contracts tensora
-
             self.contracts_mask = self.contracts_tensor[:, 7]
+            print(f"to shape tou contracts_mask einai {self.contracts_mask.shape}")
 
-            # endregion
-
-            # region ships state
             cii_attained_total = cii_attained
-            print(cii_attained_total)
 
             ship_updates = self.update_ship_tensor(ship_idx, contract, speed, cii_attained_total)
 
@@ -548,19 +534,21 @@ class CarbonEnv(gym.Env):
             ships_tensors = self.ships_tensor
 
             self.ships_tensor = tf.tensor_scatter_nd_update(ships_tensors, indices_ship, ship_updates)
-            # endregion
 
-            # region ships_mask
-
-            # to contract mask ginetai h sthlh ship_availability tou ships tensora
+            # to ships mask ginetai h sthlh ship_availability tou ships tensora
             self.ships_mask = self.ships_tensor[:, 6]
-            # endregion
 
-            # region ships_log
+            # ships_log
 
-            self.ships_log[ship_number] = delay
+            # pairnw to delay se numpy
+            delay = delay.numpy()
 
-            # endregion
+            # an arghsw (delay>0) tote days_of_unavailability = delay
+            # alliws an den arghsw (delay <= 0) tote days_of_unavailability = -delay
+
+            days_of_unavailability = delay if delay > 0 else -delay
+
+            self.ships_log[ship_number] = days_of_unavailability
 
         else:
             # an den phres contract action==12
