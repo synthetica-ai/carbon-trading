@@ -14,22 +14,23 @@ from shutil import copyfile
 from data.data_functions import train_input_fn
 from env.env import CarbonEnv
 from models.models import BaselineNet, PolicyNet
+from utils.utils import generate_state_at_new_day, prepare_ships_log
 
 
 class PolicyGradient(object):
-    def __init__(self, env, num_iterations=2, max_ep_len=365 * 4, output_path="../results/"):
+    def __init__(self, env, num_iterations=2, output_path="../results/"):
         self.output_path = output_path
         if not exists(output_path):
             makedirs(output_path)
         self.env = env
-        self.batch_size = self.env.batch_size
+        self.batch_size = self.env.batch_size  # 32
         # to observation shape einai 4, 10+11+1+1 ? 10=contracts_feats,11=fleet_feats,1=contacts_mask_feats,1=fleet_mask_feats
         # self.observation_dim = self.env.observation_space_dim
         # self.action_dim = self.env.action_space_dim[0]
         self.action_dim = 13
         self.gamma = 0.99
         self.num_iterations = num_iterations
-        self.max_ep_len = max_ep_len
+        self.max_ep_len = 365 * 4  # an ka8e mera exw 4 available ships
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=3e-2)
         self.policy_net = PolicyNet(embedding_size=128, output_size=self.action_dim)
         self.baseline_net = BaselineNet(embedding_size=128, output_size=1)
@@ -47,24 +48,29 @@ class PolicyGradient(object):
             states, actions, rewards = [], [], []
             episode_reward = 0
 
-            for step in range(self.max_ep_len):
-                # edw kapou prepei na looparw panw sta available ships
+            step_count = 0
+            for day in range(365):
+                # gia ka8e mera ektos ths prwths
+                if day != 0:
+                    env.ships_log, available_ships_list = prepare_ships_log(env.ships_log)
+                    state = generate_state_at_new_day(env, available_ships_list)
 
-                # TODO LOOPARE PANW SE AVAILABLE SHIPS
-                ship_number = 1
                 states.append(state)
-                action = self.policy_net.sample_action(state)
-                state, reward, done, _ = env.step(ship_number, action)
-                actions.append(action)
-                rewards.append(reward)
-                episode_reward += reward
-                t += 1
+                # TODO LOOPARE PANW SE AVAILABLE SHIPS
+                for ship_number in available_ships_list:
 
-                if done or step == self.max_ep_len - 1:
-                    episode_rewards.append(episode_reward)
-                    break
-                if (not num_episodes) and t == self.batch_size:
-                    break
+                    action = self.policy_net.sample_action(state)
+                    state, reward, done, _ = env.step(ship_number, action)
+                    actions.append(action)
+                    rewards.append(reward)
+                    episode_reward += reward
+                    t += 1
+
+                    if done or step_count == self.max_ep_len - 1:
+                        episode_rewards.append(episode_reward)
+                        break
+                    if (not num_episodes) and t == self.batch_size:
+                        break
 
             path = {
                 "observation": np.array(states),
