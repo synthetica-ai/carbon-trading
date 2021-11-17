@@ -1,15 +1,8 @@
 import tensorflow as tf
-from tensorflow import keras
 import numpy as np
-from termcolor import colored
-from tqdm import tqdm
-from datetime import datetime
-from os import rmdir, listdir, remove, makedirs
+
+from os import makedirs
 from os.path import exists
-from time import gmtime, strftime
-from itertools import product
-from random import shuffle
-from shutil import copyfile
 
 from data.data_functions import train_input_fn
 from env.env import CarbonEnv
@@ -18,120 +11,163 @@ from utils.utils import generate_state_at_new_day, prepare_ships_log
 
 
 class PolicyGradient(object):
-    def __init__(self, env, num_iterations=2, output_path="../results/"):
+    def __init__(self, env, num_iterations=10, output_path="../results/"):
         self.output_path = output_path
         if not exists(output_path):
             makedirs(output_path)
         self.env = env
-        self.batch_size = self.env.batch_size  # 32
+        self.batch_size = 4  # mallon einai poso megalo trajectory (plh8os steps pou kanw) # self.env.batch_size  # 32
         # to observation shape einai 4, 10+11+1+1 ? 10=contracts_feats,11=fleet_feats,1=contacts_mask_feats,1=fleet_mask_feats
         # self.observation_dim = self.env.observation_space_dim
         # self.action_dim = self.env.action_space_dim[0]
         self.action_dim = 13
         self.gamma = 0.99
+        # posa games / years tha trexw
         self.num_iterations = num_iterations
         self.max_ep_len = 365 * 4  # an ka8e mera exw 4 available ships
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=3e-2)
         self.policy_net = PolicyNet(embedding_size=128, output_size=self.action_dim)
         self.baseline_net = BaselineNet(embedding_size=128, output_size=1)
 
-    def play_games(self, env=None, num_episodes=10):
-        episode = 0
-        episode_rewards = []
-        paths = []
-        t = 0
+    def play_games(self, current_episode, env=None):
+        # t = 0
         if env is None:
             env = self.env
 
-        while num_episodes or t < self.batch_size:
-            state = env.reset()  #
-            states, actions, rewards = [], [], []
-            episode_reward = 0
+        # while num_episodes or t < self.batch_size:
+        state = env.reset()  #
 
-            step_count = 0
-            for day in range(365):
-                # gia ka8e mera ektos ths prwths
-                if day != 0:
-                    env.ships_log, available_ships_list = prepare_ships_log(env.ships_log)
-                    state = generate_state_at_new_day(env, available_ships_list)
+        states, actions, rewards = [], [], []
 
+        steps_count = 0
+        for day in range(365):
+
+            print(f"Xronia: {current_episode} kai mera: {day}")
+            # print(f"To ships_log einai {env.ships_log}")
+            # gia ka8e mera ektos ths prwths
+            if day != 0:
+                env.ships_log, env.available_ships_list = prepare_ships_log(env.ships_log)
+
+            # an h available ships list einai empty
+            if not env.available_ships_list:
+                print("Den exw available ships ara paw sthn epomenh mera")
+                continue
+            else:
+                print(f"Ta available ships einai {env.available_ships_list}")
+                state = generate_state_at_new_day(env, env.available_ships_list)
+
+            # kane concat tous tensores twn contracts_state
+            # yearly_contracts_state = states_yearly_dict["contracts_state"]
+            # daily_contracts_state = state["contracts_state"]
+            # concatenated_contracts_state = tf.concat((yearly_contracts_state, daily_contracts_state), axis=0)
+            # states_yearly_dict["yearly_contracts_state"] = concatenated_contracts_state
+
+            # for key in state:
+            #     # print(key)
+            #     states_yearly_dict[key] = tf.concat((states_yearly_dict[key], state[key]), axis=0)
+
+            for ship_number in env.available_ships_list:
+
+                action = self.policy_net.sample_action(state)
+                state, reward, done, _ = env.step(ship_number, action)
                 states.append(state)
-                # TODO LOOPARE PANW SE AVAILABLE SHIPS
-                for ship_number in available_ships_list:
+                actions.append(action)
+                rewards.append(reward)
+                steps_count += 1
 
-                    action = self.policy_net.sample_action(state)
-                    state, reward, done, _ = env.step(ship_number, action)
-                    actions.append(action)
-                    rewards.append(reward)
-                    episode_reward += reward
-                    t += 1
+                # if done or steps_count == self.max_ep_len - 1:
+                #     episode_rewards.append(episode_reward)
+                #     break
+                # if (not num_episodes) and t == self.batch_size:
+                #     break
 
-                    if done or step_count == self.max_ep_len - 1:
-                        episode_rewards.append(episode_reward)
-                        break
-                    if (not num_episodes) and t == self.batch_size:
-                        break
+        print(f"Xronia: {current_episode}, sunolo apo steps: {steps_count} ")
+        year_data = {"states": states, "reward": rewards, "action": actions}
 
-            path = {
-                "observation": np.array(states),
-                "reward": np.array(rewards),
-                "action": np.array(actions),
-            }
-            paths.append(path)
-            episode += 1
-            if num_episodes and episode >= num_episodes:
-                break
-        return paths, episode_rewards
+        return year_data, steps_count
 
-    def get_returns(self, paths):
-        all_returns = []
-        for path in paths:
-            rewards = path["reward"]
-            returns = []
-            reversed_rewards = np.flip(rewards, 0)
-            g_t = 0
-            for r in reversed_rewards:
-                g_t = r + self.gamma * g_t
-                returns.insert(0, g_t)
-            all_returns.append(returns)
-        returns = np.concatenate(all_returns)
+    def get_returns(self, rewards_array):
+        T = len(rewards_array)
+        discounts = np.logspace(0, T, num=T, base=self.gamma, endpoint=False)
+        returns = np.array([np.sum(discounts[: T - t] * rewards_array[t:]) for t in range(T)])
         return returns
 
-    def get_advantage(self, returns, state):
-        values = self.baseline_net.forward(state).numpy()
-        advantages = returns - values
+    def get_advantage(self, returns, states):
+        value_array = np.array([])
+        for state in states:
+            value = self.baseline_net.forward(state).numpy()
+            value_array = np.append(value_array, value)
+        advantages = returns - value_array
         advantages = (advantages - np.mean(advantages)) / np.sqrt(np.sum(advantages ** 2))
         return advantages
 
-    def update_policy(self, observations, actions, advantages):
-        observations = tf.convert_to_tensor(observations)
-        actions = tf.convert_to_tensor(actions)
-        advantages = tf.convert_to_tensor(advantages)
+    def update_policy(self, state, action, advantage):
+        # state is already a tensor
+        action = tf.convert_to_tensor(action)
+        advantage = tf.convert_to_tensor(advantage)
         with tf.GradientTape() as tape:
-            log_prob = self.policy_net.action_distribution(observations).log_prob(actions)
-            loss = -tf.math.reduce_mean(log_prob * tf.cast(advantages, tf.float32))
-        grads = tape.gradient(loss, self.policy_net.model.trainable_weights)
-        self.optimizer.apply_gradients(zip(grads, self.policy_net.model.trainable_weights))
+            log_prob = self.policy_net.action_distribution(state)[1].log_prob(action)
+            loss = -tf.math.reduce_mean(log_prob * tf.cast(advantage, tf.float32))
+        grads = tape.gradient(loss, self.policy_net.policy_model.trainable_weights)
+        self.optimizer.apply_gradients(zip(grads, self.policy_net.policy_model.trainable_weights))
+        return loss
 
     def train(self):
-        all_total_rewards = []
-        averaged_total_rewards = []
-        #
-        for t in range(self.num_iterations):
-            paths, total_rewards = self.play_games()
-            all_total_rewards.extend(total_rewards)
-            observations = np.concatenate([path["observation"] for path in paths])
-            actions = np.concatenate([path["action"] for path in paths])
-            returns = self.get_returns(paths)
-            advantages = self.get_advantage(returns, observations)
-            self.baseline_net.update(observations=observations, target=returns)
-            self.update_policy(observations, actions, advantages)
-            avg_reward = np.mean(total_rewards)
-            averaged_total_rewards.append(avg_reward)
-            print("Average reward for batch {}: {:04.2f}".format(t, avg_reward))
+        each_year_reward_list = []
+        each_year_avg_reward_list = []
+        each_year_actions_list = []
+        each_year_baseline_loss_list = []
+        each_year_policynet_loss_list = []
+
+        for year in range(self.num_iterations):
+            print(f"Ksekina to year: {year}")
+            year_data, num_steps_current_year = self.play_games(current_episode=t)
+            # o rewards array exei length iso me num_steps_for_current_year
+            rewards_array_current_year = year_data["reward"]
+            total_reward_current_year = sum(rewards_array_current_year)
+            print(f"To synoliko reward gia to year {year} htan {total_reward_current_year}")
+            each_year_reward_list.append(total_reward_current_year)
+
+            states_array_current_year = year_data["states"]
+            actions_array_current_year = year_data["action"]
+            returns_array_current_year = self.get_returns(rewards_array_current_year)
+            advantages_array_current_year = self.get_advantage(
+                returns_array_current_year, states_array_current_year
+            )
+            baseline_loss_array_current_year = np.array([])
+            policynet_loss_array_current_year = np.array([])
+            for step in range(num_steps_current_year):
+                state_for_current_step = states_array_current_year[step]
+                return_for_current_step = returns_array_current_year[step]
+                action_for_current_step = actions_array_current_year[step]
+                advantage_for_current_step = advantages_array_current_year[step]
+                baseline_loss_array_current_year = np.append(
+                    baseline_loss_array_current_year,
+                    self.baseline_net.update(
+                        state_dict=state_for_current_step, target=return_for_current_step
+                    ),
+                )
+                policynet_loss_array_current_year = np.append(
+                    policynet_loss_array_current_year,
+                    self.update_policy(
+                        state=state_for_current_step,
+                        action=action_for_current_step,
+                        advantage=advantage_for_current_step,
+                    ),
+                )
+            each_year_actions_list.append(actions_array_current_year)
+            each_year_baseline_loss_list.append(baseline_loss_array_current_year)
+            each_year_policynet_loss_list.append(policynet_loss_array_current_year)
+            avg_reward = np.mean(returns_array_current_year)
+            each_year_avg_reward_list.append(avg_reward)
+            print("Average reward for batch {}: {:04.2f}".format(year, avg_reward))
         print("Training complete")
-        np.save(self.output_path + "rewards.npy", averaged_total_rewards)
-        pass
+        np.save(self.output_path + "actions.npy", each_year_actions_list)
+        np.save(self.output_path + "baseline_loss.npy", each_year_baseline_loss_list)
+        np.save(self.output_path + "policynet_loss.npy", each_year_policynet_loss_list)
+        np.save(self.output_path + "rewards.npy", each_year_avg_reward_list)
+        self.baseline_net.baseline_model.save("../results/models/baseline/")
+        self.policy_net.policy_model.save("../results/models/policynet/")
 
     def evaluate(self, env, num_episodes=1):
         paths, rewards = self.play_games(env, num_episodes)

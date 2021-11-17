@@ -22,13 +22,12 @@ class CarbonModel(tf.keras.Model):
     Takes inputs:
     * `state_dict` = {"contracts_state":`contracts_tensor`,
                     "ships_state":`ships_tensor`,
-                    "contracts_mask":`contracts_mask`,
-                    "ships_mask":`ships_mask`}
+                    }
 
     Outputs:
     * `logits`
 
-    """  # TODO bug is here
+    """
 
     def __init__(self, output_size, embedding_size, policynet_flag):
         super(CarbonModel, self).__init__()
@@ -61,15 +60,14 @@ class CarbonModel(tf.keras.Model):
         Inputs:
         * `state_dict`: {"contracts_state":contracts_tensor,
                           "ships_state":ships_tensor,
-                          "contracts_mask":contracts_mask,
-                          "ships_mask":ships_mask}
+                          }
 
         """
 
-        self.contracts_tensor = state_dict["contracts_state"]
+        self.contracts_tensor = state_dict["contracts_state"]  # concatenated gia 365 meres
         self.ships_tensor = state_dict["ships_state"]
-        self.contracts_mask = state_dict["contracts_mask"]
-        self.ships_mask = state_dict["ships_mask"]
+        contracts_mask = self.contracts_tensor[:, 7]
+        ships_mask = self.ships_tensor[:, 6]
 
         x = self.dense1(self.contracts_tensor)
         x = self.dense2(x)
@@ -103,12 +101,12 @@ class CarbonModel(tf.keras.Model):
             # contracts_bm shape prepei na einai (4,1)
             # print("tsekarw an tha bw sto if")
 
-            if self.contracts_mask.shape.as_list() != [4, 1]:
-                self.contracts_mask = tf.reshape(self.contracts_mask, shape=[4, 1])
+            if contracts_mask.shape.as_list() != [4, 1]:
+                contracts_mask = tf.reshape(contracts_mask, shape=[4, 1])
                 # print(f"Bhka sto if, h contracts_mask exei shape {self.contracts_mask.shape.as_list()}")
 
             # 4,1
-            contracts_bm = tf.equal(self.contracts_mask, 0)
+            contracts_bm = tf.equal(contracts_mask, 0)
             # print(f"contracts_bm shape {contracts_bm.shape}")
 
             # TODO skaei edw epeidh yparxei miss match metaksy contracts_bm pou exei shape 4 kai kai twn tf.constant False kai True pou exoun 3
@@ -161,7 +159,7 @@ class BaselineNet(object):
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=3e-2)
 
     def forward(self, state_dict):
-        output = tf.squeeze(self.baseline_model(state_dict))
+        output = self.baseline_model(state_dict)
         return output
 
     def update(self, state_dict, target):
@@ -172,11 +170,15 @@ class BaselineNet(object):
 
         ta target einai ta returns? prepei na dw diafora returns kai advantages
         """
+
         with tf.GradientTape() as tape:
             predictions = self.forward(state_dict)
+            print(f"The prediction is{predictions}")
             loss = tf.keras.losses.mean_squared_error(y_true=target, y_pred=predictions)
+            print(f"The loss is {loss}")
         grads = tape.gradient(loss, self.baseline_model.trainable_weights)
         self.optimizer.apply_gradients(zip(grads, self.baseline_model.trainable_weights))
+        return loss
 
 
 # PolicyNet
@@ -196,7 +198,7 @@ class PolicyNet(object):
         logits = self.policy_model(state_dict)
         # squeeze logits before they get in the categorical
         # auto prepei na ginei gia na parw 1 sample apo thn Categorical kai oxi batches twn 13
-        logits = tf.squeeze(logits)
+        # logits = tf.squeeze(logits)
         return logits, tfp.distributions.Categorical(logits=logits)
 
     def sample_action(self, state_dict):

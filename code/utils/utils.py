@@ -156,11 +156,13 @@ def prepare_ships_log(ships_log):
     # dhmiourghse mia lista available_ships pou 8a periexei ta ships pou einai available (days_of_unavailability = 0)
 
     available_ships = []
-    for k, v in ships_log.items():
-        ships_log[k] -= 1
+    for k in ships_log:
         if ships_log[k] <= 0:
             ships_log[k] = 0
             available_ships.append(k)
+
+        # afairese apo ola ta ship logs mia mera unavailability
+        ships_log[k] -= 1
     return ships_log, available_ships
 
 
@@ -176,6 +178,8 @@ def generate_state_at_new_day(env, available_ships_list):
     * ships mask me bash ta available ships
     """
 
+    ships_tensor = env.ships_tensor
+    # print(f"o ships tensor einai {ships_tensor}")
     # pairnw ta idxs twn available ships
     available_ships_idx = [x - 1 for x in available_ships_list]
     inplace_array = np.zeros(4)
@@ -183,7 +187,7 @@ def generate_state_at_new_day(env, available_ships_list):
     inplace_array[available_ships_idx] = 1
 
     # ftiaxnw enan indices_array (4,11) me bash to shape tou ships_tensor
-    indices_array = np.zeros(shape=(env.ships_tensor.shape))
+    indices_array = np.zeros(shape=(ships_tensor.shape))
     # epeidh thelw na allaksw ston ship_tensor to ship_availability (feature 6) kanw auth th sthlh 1
     indices_array[:, 6] = 1
 
@@ -193,30 +197,30 @@ def generate_state_at_new_day(env, available_ships_list):
 
     # ftiaxnw enan scattered array
     # sta indices pou ypodeiknyei o indices bazw tis times tou inplace array
-    scatter = tf.scatter_nd(indices, inplace_array, shape=env.ships_tensor.shape)
+    scatter = tf.scatter_nd(indices, inplace_array, shape=ships_tensor.shape)
 
     # o inverse_mask einai o logikos antistrofos tou indices_array
     inverse_mask = tf.cast(tf.math.logical_not(indices_array), tf.float32)
 
     # o input_array_zero exei 0 stis 8eseis pou thelw na allaksw kai se oles tis alles theseis exei thn timh tou ships_tensor
-    input_array_zero_out = tf.multiply(inverse_mask, env.ships_tensor)
+    input_array_zero_out = tf.multiply(inverse_mask, ships_tensor)
 
     # o ananewmenos ship tensor me tis times pou exei o scatter tensor ekei pou htan ta mhdenika tou input_array_zero_out
     ships_tensor_updated = tf.add(input_array_zero_out, tf.cast(scatter, tf.float32))
 
     # bazw ton ananewmeno ships_tensor san attribute sto environment
-    env.ships_tensor = tf.cast(ships_tensor_updated, tf.float32)
+    ships_tensor = tf.cast(ships_tensor_updated, tf.float32)
 
-    env.contracts_df, env.contracts_tensor, = env.create_contracts_tensor()
+    contracts_df, contracts_tensor, = env.create_contracts_tensor()
 
     # Add the ballast distances to the ships tensor
-    env.ships_tensor = func_ballast(con_tensor=env.contracts_tensor, ships_tensor=env.ships_tensor, dm_tensor=env.dm_tensor,)
+    ships_tensor = func_ballast(con_tensor=contracts_tensor, ships_tensor=ships_tensor, dm_tensor=env.dm_tensor,)
 
-    env.contracts_mask = env.contracts_tensor[:, 7]
+    # contracts_mask = contracts_tensor[:, 7]
 
-    env.ships_mask = env.ships_tensor[:, 6]
+    # ships_mask = ships_tensor[:, 6]
 
-    state_dict = {"contracts_state": env.contracts_tensor, "ships_state": env.ships_tensor, "contracts_mask": env.contracts_mask, "ships_mask": env.ships_mask}
+    state_dict = {"contracts_state": contracts_tensor, "ships_state": ships_tensor}
 
     return state_dict
 
