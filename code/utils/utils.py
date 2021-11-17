@@ -96,7 +96,9 @@ def func_ballast(con_tensor, ships_tensor, dm_tensor):
     num_contracts = 4
     ones_col_dim = num_ship_feats - num_contracts
     # creating an array of ones and zeros for the mask
-    ones_and_zeros = tf.concat([tf.ones([num_contracts, ones_col_dim]), tf.zeros([num_contracts, num_contracts]),], axis=1,)
+    ones_and_zeros = tf.concat(
+        [tf.ones([num_contracts, ones_col_dim]), tf.zeros([num_contracts, num_contracts]),], axis=1,
+    )
     # casting the ones and zeros to boolean to create the boolean mask
     mask = tf.cast(ones_and_zeros, dtype="bool")
 
@@ -181,7 +183,9 @@ def generate_state_at_new_day(env, available_ships_list):
     ships_tensor = env.ships_tensor
     # print(f"o ships tensor einai {ships_tensor}")
     # pairnw ta idxs twn available ships
-    available_ships_idx = [x - 1 for x in available_ships_list]
+    # available_ships_idx = [x - 1 for x in available_ships_list]
+
+    available_ships_idx = [x for x in available_ships_list]
     inplace_array = np.zeros(4)
     # bazw sta idxs twn available ships asso
     inplace_array[available_ships_idx] = 1
@@ -214,7 +218,9 @@ def generate_state_at_new_day(env, available_ships_list):
     contracts_df, contracts_tensor, = env.create_contracts_tensor()
 
     # Add the ballast distances to the ships tensor
-    ships_tensor = func_ballast(con_tensor=contracts_tensor, ships_tensor=ships_tensor, dm_tensor=env.dm_tensor,)
+    ships_tensor = func_ballast(
+        con_tensor=contracts_tensor, ships_tensor=ships_tensor, dm_tensor=env.dm_tensor,
+    )
 
     # contracts_mask = contracts_tensor[:, 7]
 

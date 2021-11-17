@@ -11,7 +11,7 @@ from utils.utils import generate_state_at_new_day, prepare_ships_log
 
 
 class PolicyGradient(object):
-    def __init__(self, env, num_iterations=10, output_path="../results/"):
+    def __init__(self, env, num_iterations=5, output_path="../results/"):
         self.output_path = output_path
         if not exists(output_path):
             makedirs(output_path)
@@ -101,13 +101,16 @@ class PolicyGradient(object):
         advantages = (advantages - np.mean(advantages)) / np.sqrt(np.sum(advantages ** 2))
         return advantages
 
-    def update_policy(self, state, action, advantage):
+    def update_policy(self, state, action, advantage, entropy_loss_weight):
         # state is already a tensor
         action = tf.convert_to_tensor(action)
         advantage = tf.convert_to_tensor(advantage)
         with tf.GradientTape() as tape:
             log_prob = self.policy_net.action_distribution(state)[1].log_prob(action)
-            loss = -tf.math.reduce_mean(log_prob * tf.cast(advantage, tf.float32))
+            entropy = self.policy_net.action_distribution(state)[1].entropy()
+            loss = -tf.math.reduce_mean(
+                log_prob * tf.cast(advantage, tf.float32) + entropy_loss_weight * entropy
+            )
         grads = tape.gradient(loss, self.policy_net.policy_model.trainable_weights)
         self.optimizer.apply_gradients(zip(grads, self.policy_net.policy_model.trainable_weights))
         return loss
@@ -121,7 +124,7 @@ class PolicyGradient(object):
 
         for year in range(self.num_iterations):
             print(f"Ksekina to year: {year}")
-            year_data, num_steps_current_year = self.play_games(current_episode=t)
+            year_data, num_steps_current_year = self.play_games(current_episode=year)
             # o rewards array exei length iso me num_steps_for_current_year
             rewards_array_current_year = year_data["reward"]
             total_reward_current_year = sum(rewards_array_current_year)
@@ -160,7 +163,7 @@ class PolicyGradient(object):
             each_year_policynet_loss_list.append(policynet_loss_array_current_year)
             avg_reward = np.mean(returns_array_current_year)
             each_year_avg_reward_list.append(avg_reward)
-            print("Average reward for batch {}: {:04.2f}".format(year, avg_reward))
+            print(f"To average reward gia ta {self.num_iterations} years htan {avg_reward}")
         print("Training complete")
         np.save(self.output_path + "actions.npy", each_year_actions_list)
         np.save(self.output_path + "baseline_loss.npy", each_year_baseline_loss_list)
