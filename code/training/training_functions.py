@@ -11,22 +11,22 @@ from utils.utils import generate_state_at_new_day, prepare_ships_log
 
 
 class PolicyGradient(object):
-    def __init__(self, env, num_iterations=5, output_path="../results/"):
+    def __init__(self, env, num_iterations=3, output_path="../results/"):
         self.output_path = output_path
         if not exists(output_path):
             makedirs(output_path)
         self.env = env
-        self.batch_size = 4  # mallon einai poso megalo trajectory (plh8os steps pou kanw) # self.env.batch_size  # 32
+        # self.batch_size = 4  # mallon einai poso megalo trajectory (plh8os steps pou kanw) # self.env.batch_size  # 32
         # to observation shape einai 4, 10+11+1+1 ? 10=contracts_feats,11=fleet_feats,1=contacts_mask_feats,1=fleet_mask_feats
         # self.observation_dim = self.env.observation_space_dim
         # self.action_dim = self.env.action_space_dim[0]
         self.action_dim = 13
-        self.gamma = 0.7  # 0.99
+        self.gamma = 0.99  # 0.99
         # posa games / years tha trexw
         self.num_iterations = num_iterations
         self.max_ep_len = 365 * 4  # an ka8e mera exw 4 available ships
         self.policy_net = PolicyNet(embedding_size=128, output_size=self.action_dim)
-        self.policy_optimizer = tf.keras.optimizers.Adam(learning_rate=0.0005)
+        self.policy_optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
         self.baseline_net = BaselineNet(embedding_size=128, output_size=1)
 
     def play_games(self, current_episode, env=None):
@@ -42,7 +42,7 @@ class PolicyGradient(object):
         steps_count = 0
         for day in range(365):
 
-            print(f"Xronia: {current_episode} kai mera: {day}")
+            print(f"Xronia: {current_episode+1} kai mera: {day}")
             # print(f"To ships_log einai {env.ships_log}")
             # gia ka8e mera ektos ths prwths
             if day != 0:
@@ -170,7 +170,8 @@ class PolicyGradient(object):
         np.save(self.output_path + "actions.npy", each_year_actions_list)
         np.save(self.output_path + "baseline_loss.npy", each_year_baseline_loss_list)
         np.save(self.output_path + "policynet_loss.npy", each_year_policynet_loss_list)
-        np.save(self.output_path + "rewards.npy", each_year_avg_reward_list)
+        np.save(self.output_path + "rewards.npy", each_year_reward_list)
+        np.save(self.output_path + "avg_rewards.npy", each_year_avg_reward_list)
         self.baseline_net.baseline_model.save("../results/models/baseline/")
         self.policy_net.policy_model.save("../results/models/policynet/")
 
