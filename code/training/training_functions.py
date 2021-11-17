@@ -21,12 +21,12 @@ class PolicyGradient(object):
         # self.observation_dim = self.env.observation_space_dim
         # self.action_dim = self.env.action_space_dim[0]
         self.action_dim = 13
-        self.gamma = 0.99
+        self.gamma = 0.7  # 0.99
         # posa games / years tha trexw
         self.num_iterations = num_iterations
         self.max_ep_len = 365 * 4  # an ka8e mera exw 4 available ships
-        self.optimizer = tf.keras.optimizers.Adam(learning_rate=3e-2)
         self.policy_net = PolicyNet(embedding_size=128, output_size=self.action_dim)
+        self.policy_optimizer = tf.keras.optimizers.Adam(learning_rate=0.0005)
         self.baseline_net = BaselineNet(embedding_size=128, output_size=1)
 
     def play_games(self, current_episode, env=None):
@@ -101,7 +101,7 @@ class PolicyGradient(object):
         advantages = (advantages - np.mean(advantages)) / np.sqrt(np.sum(advantages ** 2))
         return advantages
 
-    def update_policy(self, state, action, advantage, entropy_loss_weight):
+    def update_policy(self, state, action, advantage, entropy_loss_weight=0.001):
         # state is already a tensor
         action = tf.convert_to_tensor(action)
         advantage = tf.convert_to_tensor(advantage)
@@ -112,7 +112,9 @@ class PolicyGradient(object):
                 log_prob * tf.cast(advantage, tf.float32) + entropy_loss_weight * entropy
             )
         grads = tape.gradient(loss, self.policy_net.policy_model.trainable_weights)
-        self.optimizer.apply_gradients(zip(grads, self.policy_net.policy_model.trainable_weights))
+        self.policy_optimizer.apply_gradients(
+            zip(grads, self.policy_net.policy_model.trainable_weights)
+        )
         return loss
 
     def train(self):

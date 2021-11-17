@@ -185,7 +185,7 @@ def generate_state_at_new_day(env, available_ships_list):
     # pairnw ta idxs twn available ships
     # available_ships_idx = [x - 1 for x in available_ships_list]
 
-    available_ships_idx = [x for x in available_ships_list]
+    available_ships_idx = [x - 1 for x in available_ships_list]
     inplace_array = np.zeros(4)
     # bazw sta idxs twn available ships asso
     inplace_array[available_ships_idx] = 1

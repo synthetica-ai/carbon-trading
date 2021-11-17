@@ -49,10 +49,16 @@ class CarbonModel(tf.keras.Model):
         self.dense2 = tf.keras.layers.Dense(64, activation="relu", name="dense_layer_2")
         self.dense3 = tf.keras.layers.Dense(128, activation="relu", name="dense_layer_3")
         self.dense4 = tf.keras.layers.Dense(64, activation="relu", name="dense_layer_4")
-        self.embedding_layer_1 = tf.keras.layers.Dense(self.embedding_size, activation="relu", name="embdedding_layer_1")
-        self.embedding_layer_2 = tf.keras.layers.Dense(self.embedding_size, activation="relu", name="embdedding_layer_2")
+        self.embedding_layer_1 = tf.keras.layers.Dense(
+            self.embedding_size, activation="relu", name="embdedding_layer_1"
+        )
+        self.embedding_layer_2 = tf.keras.layers.Dense(
+            self.embedding_size, activation="relu", name="embdedding_layer_2"
+        )
         self.context_layer = tf.keras.layers.Dense(64, activation="relu", name="context_layer")
-        self.output_layer = tf.keras.layers.Dense(self.output_size, activation="linear", name="output_layer")
+        self.output_layer = tf.keras.layers.Dense(
+            self.output_size, activation="linear", name="output_layer"
+        )
 
     def call(self, state_dict):
         """
@@ -113,7 +119,9 @@ class CarbonModel(tf.keras.Model):
             # tsekare kai contracts_mask kai bgale kai ta seeds
 
             # shape 4,3
-            actions_bm = tf.where(contracts_bm, tf.repeat(tf.constant(False), 3), tf.repeat(tf.constant(True), 3))
+            actions_bm = tf.where(
+                contracts_bm, tf.repeat(tf.constant(False), 3), tf.repeat(tf.constant(True), 3)
+            )
             # print(f"actions_bm shape {actions_bm.shape}")
 
             # shape 12,
@@ -155,8 +163,10 @@ class BaselineNet(object):
 
     def __init__(self, embedding_size, output_size):
         self.embedding_size = embedding_size
-        self.baseline_model = CarbonModel(embedding_size=self.embedding_size, output_size=output_size, policynet_flag=False)
-        self.optimizer = tf.keras.optimizers.Adam(learning_rate=3e-2)
+        self.baseline_model = CarbonModel(
+            embedding_size=self.embedding_size, output_size=output_size, policynet_flag=False
+        )
+        self.optimizer = tf.keras.optimizers.Adam(learning_rate=0.0007)
 
     def forward(self, state_dict):
         output = self.baseline_model(state_dict)
@@ -192,7 +202,9 @@ class PolicyNet(object):
     def __init__(self, embedding_size, output_size):
         self.embedding_size = embedding_size
         self.output_size = output_size
-        self.policy_model = CarbonModel(embedding_size=self.embedding_size, output_size=self.output_size, policynet_flag=True)
+        self.policy_model = CarbonModel(
+            embedding_size=self.embedding_size, output_size=self.output_size, policynet_flag=True
+        )
 
     def action_distribution(self, state_dict):
         logits = self.policy_model(state_dict)
