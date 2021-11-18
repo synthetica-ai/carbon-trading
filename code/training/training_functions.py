@@ -11,7 +11,7 @@ from utils.utils import generate_state_at_new_day, prepare_ships_log
 
 
 class PolicyGradient(object):
-    def __init__(self, env, num_iterations=3, output_path="../results/"):
+    def __init__(self, env, num_iterations=5, output_path="../results/"):
         self.output_path = output_path
         if not exists(output_path):
             makedirs(output_path)
@@ -81,7 +81,7 @@ class PolicyGradient(object):
                 # if (not num_episodes) and t == self.batch_size:
                 #     break
 
-        print(f"Xronia: {current_episode}, sunolo apo steps: {steps_count} ")
+        print(f"Xronia: {current_episode+1}, sunolo apo steps: {steps_count} ")
         year_data = {"states": states, "reward": rewards, "action": actions}
 
         return year_data, steps_count
@@ -101,20 +101,27 @@ class PolicyGradient(object):
         advantages = (advantages - np.mean(advantages)) / np.sqrt(np.sum(advantages ** 2))
         return advantages
 
-    def update_policy(self, state, action, advantage, entropy_loss_weight=0.001):
+    def update_policy(self, states, actions, advantages, entropy_loss_weight=0.001):
         # state is already a tensor
-        action = tf.convert_to_tensor(action)
-        advantage = tf.convert_to_tensor(advantage)
         with tf.GradientTape() as tape:
-            log_prob = self.policy_net.action_distribution(state)[1].log_prob(action)
-            entropy = self.policy_net.action_distribution(state)[1].entropy()
-            loss = -tf.math.reduce_mean(
-                log_prob * tf.cast(advantage, tf.float32) + entropy_loss_weight * entropy
+            log_probs = tf.concat(
+                [
+                    self.policy_net.action_distribution(state)[1].log_prob(action)
+                    for state, action in zip(states, actions)
+                ],
+                axis=0,
             )
-        grads = tape.gradient(loss, self.policy_net.policy_model.trainable_weights)
-        self.policy_optimizer.apply_gradients(
-            zip(grads, self.policy_net.policy_model.trainable_weights)
-        )
+            entropies = tf.concat(
+                [self.policy_net.action_distribution(state)[1].entropy() for state in states],
+                axis=0,
+            )
+            min_log_prob = tf.reduce_min(tf.boolean_mask(log_probs, tf.math.is_finite(log_probs)))
+            log_probs_no_inf = tf.where(tf.math.is_inf(log_probs), 1000 * min_log_prob, log_probs)
+            loss = -tf.math.reduce_mean(
+                log_probs_no_inf * tf.cast(advantages, tf.float32) + entropy_loss_weight * entropies
+            )
+        grads = tape.gradient(loss, self.policy_net.model.trainable_weights)
+        self.policy_optimizer.apply_gradients(zip(grads, self.policy_net.model.trainable_weights))
         return loss
 
     def train(self):
@@ -139,33 +146,24 @@ class PolicyGradient(object):
             advantages_array_current_year = self.get_advantage(
                 returns_array_current_year, states_array_current_year
             )
-            baseline_loss_array_current_year = np.array([])
-            policynet_loss_array_current_year = np.array([])
-            for step in range(num_steps_current_year):
-                state_for_current_step = states_array_current_year[step]
-                return_for_current_step = returns_array_current_year[step]
-                action_for_current_step = actions_array_current_year[step]
-                advantage_for_current_step = advantages_array_current_year[step]
-                baseline_loss_array_current_year = np.append(
-                    baseline_loss_array_current_year,
-                    self.baseline_net.update(
-                        state_dict=state_for_current_step, target=return_for_current_step
-                    ),
-                )
-                policynet_loss_array_current_year = np.append(
-                    policynet_loss_array_current_year,
-                    self.update_policy(
-                        state=state_for_current_step,
-                        action=action_for_current_step,
-                        advantage=advantage_for_current_step,
-                    ),
-                )
+            actions_array_current_year = tf.convert_to_tensor(actions_array_current_year)
+            returns_array_current_year = tf.convert_to_tensor(returns_array_current_year)
+            advantages_array_current_year = tf.convert_to_tensor(advantages_array_current_year)
+            baseline_loss_current_year = self.baseline_net.update(
+                states_dict=states_array_current_year, target=returns_array_current_year
+            )
+            policynet_loss_current_year = self.update_policy(
+                states=states_array_current_year,
+                actions=actions_array_current_year,
+                advantages=advantages_array_current_year,
+            )
             each_year_actions_list.append(actions_array_current_year)
-            each_year_baseline_loss_list.append(baseline_loss_array_current_year)
-            each_year_policynet_loss_list.append(policynet_loss_array_current_year)
+            each_year_baseline_loss_list.append(baseline_loss_current_year)
+            each_year_policynet_loss_list.append(policynet_loss_current_year)
             avg_reward = np.mean(returns_array_current_year)
             each_year_avg_reward_list.append(avg_reward)
-            print(f"To average reward gia ta {self.num_iterations} years htan {avg_reward}")
+        avg_reward_all_years = np.mean(each_year_avg_reward_list)
+        print(f"To average reward gia ta {self.num_iterations} years htan {avg_reward}")
         print("Training complete")
         np.save(self.output_path + "actions.npy", each_year_actions_list)
         np.save(self.output_path + "baseline_loss.npy", each_year_baseline_loss_list)

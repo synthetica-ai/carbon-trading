@@ -39,11 +39,12 @@ class CarbonModel(tf.keras.Model):
         self.output_size = output_size
         self.embedding_size = embedding_size
         self.policynet_flag = policynet_flag
-        # self.contracts_input_shape = contracts_input_shape
-        # self.fleet_input_shape = fleet_input_shape
+        # self.contracts_input_shape = (4, 10)
+        # self.ships_input_shape = (4, 11)
+        # self.batch_size = batch_size
 
         # self.contracts_input_layer = tf.keras.Input(shape=self.contracts_input_shape,batch_size=self.batch_size)
-        # self.fleet_input_layer = tf.keras.Input(shape=self.fleet_input_shape,batch_size=self.batch_size)
+        # self.ships_input_layer = tf.keras.Input(shape=self.ships_input_shape,batch_size=self.batch_size)
 
         self.dense1 = tf.keras.layers.Dense(256, activation="relu", name="dense_layer_1")
         self.dense2 = tf.keras.layers.Dense(64, activation="relu", name="dense_layer_2")
@@ -75,10 +76,12 @@ class CarbonModel(tf.keras.Model):
         contracts_mask = self.contracts_tensor[:, 7]
         ships_mask = self.ships_tensor[:, 6]
 
+        # contracts_inputs = self.contracts_input_layer(self.contracts_tensor)
         x = self.dense1(self.contracts_tensor)
         x = self.dense2(x)
         contracts_embedding = self.embedding_layer_1(x)
 
+        # ships_inputs = self.ships_input_layer(self.ships_tensor)
         y = self.dense3(self.ships_tensor)
         y = self.dense4(y)
         fleet_embedding = self.embedding_layer_2(y)
@@ -163,31 +166,33 @@ class BaselineNet(object):
 
     def __init__(self, embedding_size, output_size):
         self.embedding_size = embedding_size
-        self.baseline_model = CarbonModel(
+        self.model = CarbonModel(
             embedding_size=self.embedding_size, output_size=output_size, policynet_flag=False
         )
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=0.0007)
 
     def forward(self, state_dict):
-        output = self.baseline_model(state_dict)
+        output = self.model(state_dict)
         return output
 
-    def update(self, state_dict, target):
+    def update(self, states_dict, target):
         """
         A good idea for the loss of the value function is the monte carlo error
         loss_value = sum_over_samples[estimated_advantage^2]
 
 
-        ta target einai ta returns? prepei na dw diafora returns kai advantages
+        sthn update pernaw to states_dict pou exei to trajectory me ta states gia ka8e step
+        pou ekana sto game
         """
 
         with tf.GradientTape() as tape:
-            predictions = self.forward(state_dict)
+            predictions = tf.concat([self.forward(state) for state in states_dict], axis=0)
+            # predictions = self.forward(state_dict)
             print(f"The prediction is{predictions}")
             loss = tf.keras.losses.mean_squared_error(y_true=target, y_pred=predictions)
             print(f"The loss is {loss}")
-        grads = tape.gradient(loss, self.baseline_model.trainable_weights)
-        self.optimizer.apply_gradients(zip(grads, self.baseline_model.trainable_weights))
+        grads = tape.gradient(loss, self.model.trainable_weights)
+        self.optimizer.apply_gradients(zip(grads, self.model.trainable_weights))
         return loss
 
 
@@ -202,12 +207,12 @@ class PolicyNet(object):
     def __init__(self, embedding_size, output_size):
         self.embedding_size = embedding_size
         self.output_size = output_size
-        self.policy_model = CarbonModel(
+        self.model = CarbonModel(
             embedding_size=self.embedding_size, output_size=self.output_size, policynet_flag=True
         )
 
     def action_distribution(self, state_dict):
-        logits = self.policy_model(state_dict)
+        logits = self.model(state_dict)
         # squeeze logits before they get in the categorical
         # auto prepei na ginei gia na parw 1 sample apo thn Categorical kai oxi batches twn 13
         # logits = tf.squeeze(logits)
