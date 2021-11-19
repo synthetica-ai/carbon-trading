@@ -11,7 +11,7 @@ from utils.utils import generate_state_at_new_day, prepare_ships_log
 
 
 class PolicyGradient(object):
-    def __init__(self, env, num_iterations=5, output_path="../results/"):
+    def __init__(self, env, num_iterations=50, output_path="../results/"):
         self.output_path = output_path
         if not exists(output_path):
             makedirs(output_path)
@@ -26,7 +26,7 @@ class PolicyGradient(object):
         self.num_iterations = num_iterations
         self.max_ep_len = 365 * 4  # an ka8e mera exw 4 available ships
         self.policy_net = PolicyNet(embedding_size=128, output_size=self.action_dim)
-        self.policy_optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
+        # self.policy_optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
         self.baseline_net = BaselineNet(embedding_size=128, output_size=1)
 
     def play_games(self, current_episode, env=None):
@@ -101,29 +101,6 @@ class PolicyGradient(object):
         advantages = (advantages - np.mean(advantages)) / np.sqrt(np.sum(advantages ** 2))
         return advantages
 
-    def update_policy(self, states, actions, advantages, entropy_loss_weight=0.001):
-        # state is already a tensor
-        with tf.GradientTape() as tape:
-            log_probs = tf.concat(
-                [
-                    self.policy_net.action_distribution(state)[1].log_prob(action)
-                    for state, action in zip(states, actions)
-                ],
-                axis=0,
-            )
-            entropies = tf.concat(
-                [self.policy_net.action_distribution(state)[1].entropy() for state in states],
-                axis=0,
-            )
-            min_log_prob = tf.reduce_min(tf.boolean_mask(log_probs, tf.math.is_finite(log_probs)))
-            log_probs_no_inf = tf.where(tf.math.is_inf(log_probs), 1000 * min_log_prob, log_probs)
-            loss = -tf.math.reduce_mean(
-                log_probs_no_inf * tf.cast(advantages, tf.float32) + entropy_loss_weight * entropies
-            )
-        grads = tape.gradient(loss, self.policy_net.model.trainable_weights)
-        self.policy_optimizer.apply_gradients(zip(grads, self.policy_net.model.trainable_weights))
-        return loss
-
     def train(self):
         each_year_reward_list = []
         each_year_avg_reward_list = []
@@ -135,6 +112,7 @@ class PolicyGradient(object):
             print(f"Ksekina to year: {year}")
             year_data, num_steps_current_year = self.play_games(current_episode=year)
             # o rewards array exei length iso me num_steps_for_current_year
+
             rewards_array_current_year = year_data["reward"]
             total_reward_current_year = sum(rewards_array_current_year)
             print(f"To synoliko reward gia to year {year} htan {total_reward_current_year}")
@@ -146,13 +124,13 @@ class PolicyGradient(object):
             advantages_array_current_year = self.get_advantage(
                 returns_array_current_year, states_array_current_year
             )
-            actions_array_current_year = tf.convert_to_tensor(actions_array_current_year)
-            returns_array_current_year = tf.convert_to_tensor(returns_array_current_year)
-            advantages_array_current_year = tf.convert_to_tensor(advantages_array_current_year)
+
+            print("eimai sto update baseline")
             baseline_loss_current_year = self.baseline_net.update(
                 states_dict=states_array_current_year, target=returns_array_current_year
             )
-            policynet_loss_current_year = self.update_policy(
+            print("eimai sto update policy")
+            policynet_loss_current_year = self.policy_net.update(
                 states=states_array_current_year,
                 actions=actions_array_current_year,
                 advantages=advantages_array_current_year,
@@ -163,18 +141,19 @@ class PolicyGradient(object):
             avg_reward = np.mean(returns_array_current_year)
             each_year_avg_reward_list.append(avg_reward)
         avg_reward_all_years = np.mean(each_year_avg_reward_list)
-        print(f"To average reward gia ta {self.num_iterations} years htan {avg_reward}")
+        print(f"To average reward gia ta {self.num_iterations} years htan {avg_reward_all_years}")
         print("Training complete")
         np.save(self.output_path + "actions.npy", each_year_actions_list)
         np.save(self.output_path + "baseline_loss.npy", each_year_baseline_loss_list)
         np.save(self.output_path + "policynet_loss.npy", each_year_policynet_loss_list)
         np.save(self.output_path + "rewards.npy", each_year_reward_list)
         np.save(self.output_path + "avg_rewards.npy", each_year_avg_reward_list)
-        self.baseline_net.baseline_model.save("../results/models/baseline/")
-        self.policy_net.policy_model.save("../results/models/policynet/")
+        self.baseline_net.model.save("../results/models/baseline/")
+        self.policy_net.model.save("../results/models/policynet/")
 
     def evaluate(self, env, num_episodes=1):
-        paths, rewards = self.play_games(env, num_episodes)
+        year_data, num_steps_current_year = self.play_games(env, num_episodes)
+        rewards = year_data["reward"]
         avg_reward = np.mean(rewards)
         print("Average eval reward: {:04.2f}".format(avg_reward))
         return avg_reward

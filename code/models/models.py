@@ -186,11 +186,12 @@ class BaselineNet(object):
         """
 
         with tf.GradientTape() as tape:
-            predictions = tf.concat([self.forward(state) for state in states_dict], axis=0)
-            # predictions = self.forward(state_dict)
-            print(f"The prediction is{predictions}")
+            predictions = [self.forward(state) for state in states_dict]
+
+            # print(f"Ta predictions einai {predictions}")
             loss = tf.keras.losses.mean_squared_error(y_true=target, y_pred=predictions)
-            print(f"The loss is {loss}")
+            # print(f"To value loss einai {loss} me shape {loss.shape}")
+        # print(f"To modelo exei weights me shape {self.model.trainable_weights}")
         grads = tape.gradient(loss, self.model.trainable_weights)
         self.optimizer.apply_gradients(zip(grads, self.model.trainable_weights))
         return loss
@@ -210,6 +211,7 @@ class PolicyNet(object):
         self.model = CarbonModel(
             embedding_size=self.embedding_size, output_size=self.output_size, policynet_flag=True
         )
+        self.optimizer = tf.keras.optimizers.Adam(learning_rate=0.0007)
 
     def action_distribution(self, state_dict):
         logits = self.model(state_dict)
@@ -222,3 +224,33 @@ class PolicyNet(object):
         sampled_actions = self.action_distribution(state_dict)[1].sample().numpy()
         return sampled_actions
 
+    def update(self, states, actions, advantages):
+        # state is already a tensor
+        with tf.GradientTape() as tape:
+            entropy_loss_weight = 0.0001
+
+            log_probs = [
+                self.action_distribution(state)[1].log_prob(action)
+                for state, action in zip(states, actions)
+            ]
+
+            entropies = [self.action_distribution(state)[1].entropy() for state in states]
+
+            min_log_prob = tf.reduce_min(
+                tf.boolean_mask(log_probs, tf.math.is_finite(log_probs)), keepdims=True
+            )
+
+            log_probs_no_inf = tf.where(tf.math.is_inf(log_probs), 1000 * min_log_prob, log_probs)
+
+            a = log_probs_no_inf * advantages
+
+            # b = [entropy * entropy_loss_weight for entropy in entropies]
+
+            loss = -tf.math.reduce_mean((a), keepdims=True)
+
+        # print("eimai sto grads")
+        grads = tape.gradient(loss, self.model.trainable_weights)
+        # print(f"ta grads einai {grads}")
+        # print("eimai sto apply_gradients")
+        self.optimizer.apply_gradients(zip(grads, self.model.trainable_weights))
+        return loss
