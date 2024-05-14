@@ -1,0 +1,5 @@
+ship_number,ship_name,ship_type,dwt,cii_threshold,cii_attained,current_port,current_speed,ship_availability,ballast_1,ballast_2,ballast_3,ballast_4
+1,supra_1,supramax,50000,0,0,0,0,1,0,0,0,0
+2,ultra_1,ultramax,60000,0,0,0,0,1,0,0,0,0
+3,pana_1,panamax,70000,0,0,0,0,1,0,0,0,0
+4,kamsar_1,kamsarmax,80000,0,0,0,0,1,0,0,0,0

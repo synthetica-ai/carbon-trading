@@ -1,0 +1,16 @@
+# Files for git to ignore
+
+environment.yml
+
+code/.pytest_cache
+code/.ipynb_checkpoints
+code/.vscode/*
+.vscode/*
+code/utils/__pycache__
+
+classnk/*
+info/*
+old/*
+guidelines/*
+
+code/*/__pycache__

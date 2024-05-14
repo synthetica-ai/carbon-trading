@@ -1,0 +1,11 @@
+ship_number,ship_name,ship_type,dwt,cii_threshold,cii,current_port,current_speed,ship_availability
+1,handy_1,handymax,40000,0,0,0,0,1
+2,handy_2,handymax,40000,0,0,0,0,1
+3,supra_1,supramax,50000,0,0,0,0,1
+4,supra_2,supramax,50000,0,0,0,0,1
+5,ultra_1,ultramax,60000,0,0,0,0,1
+6,ultra_2,ultramax,60000,0,0,0,0,1
+7,pana_1,panamax,70000,0,0,0,0,1
+8,pana_2,panamax,70000,0,0,0,0,1
+9,kamsar_1,kamsarmax,80000,0,0,0,0,1
+10,kamsar_2,kamsarmax,80000,0,0,0,0,1
